@@ -1,0 +1,14 @@
+import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
+import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
+
+abstract interface class ScreenshotRepository {
+  Future<void> save(Screenshot screenshot);
+
+  Future<Screenshot?> findById(String id);
+
+  Future<Screenshot?> findByAssetId(String assetId);
+
+  Stream<List<Screenshot>> watchRecent({int limit = 20});
+
+  Future<int> countByLifecycleStates(Set<LifecycleState> states);
+}
