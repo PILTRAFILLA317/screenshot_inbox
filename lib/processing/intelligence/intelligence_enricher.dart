@@ -51,13 +51,22 @@ final class IntelligenceEnricher {
     List<ExtractedObject> existingObjects = const [],
   }) async {
     final base = deterministic.objects;
-    if (base.isEmpty || !_shouldInterpret(context, base)) {
+    final policyDecision = _policyDecision(context, base);
+    if (!policyDecision.invoke) {
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
           'policy': policy.name,
+          'provider': null,
+          'availability': null,
+          'invoked': false,
           'skipped': true,
-          'reason': base.isEmpty ? 'no deterministic candidate' : 'policy',
+          'imageInput': false,
+          'ocrInput': false,
+          'durationMs': 0,
+          'result': 'policySkipped',
+          'reason': 'policySkipped',
+          'policyDecision': policyDecision.reason,
         },
       );
     }
@@ -68,18 +77,28 @@ final class IntelligenceEnricher {
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
           'policy': policy.name,
-          'availability': availability.toJson(),
+          'provider': availability.provider,
+          'providerVersion': ?availability.providerVersion,
+          'availability': availability.state.name,
+          'availabilityDetail': availability.toJson(),
+          'invoked': false,
           'skipped': true,
-          'reason': 'provider unavailable; deterministic fallback used',
+          'imageInput': false,
+          'ocrInput': false,
+          'durationMs': 0,
+          'result': 'providerUnavailable',
+          'reason': 'providerUnavailable',
         },
       );
     }
 
     final request = _request(context, base);
+    final invocationWatch = Stopwatch()..start();
     try {
       final result = await _serialized(
         () => provider.interpret(request).timeout(timeout),
       );
+      invocationWatch.stop();
       final validations = <ValidatedInterpretation>[];
       for (var index = 0; index < result.interpretations.length; index++) {
         final candidate = base.length > index ? base[index] : base.first;
@@ -91,49 +110,104 @@ final class IntelligenceEnricher {
           ),
         );
       }
+      final invalidResult =
+          result.interpretations.isNotEmpty &&
+          validations.every(
+            (validation) =>
+                _actionableTypes.contains(validation.type) &&
+                validation.fields.isEmpty,
+          );
+      if (invalidResult) {
+        return IntelligenceEnrichmentResult(
+          objects: _preserveUserFields(base, existingObjects),
+          diagnostics: _diagnostics(
+            availability: availability,
+            result: result,
+            invoked: true,
+            resultStatus: 'invalidResult',
+            reason: 'invalidResult',
+            durationMs: invocationWatch.elapsedMilliseconds,
+            validations: validations,
+          ),
+        );
+      }
       final resolved = result.interpretations.isEmpty
           ? _noActionObjects(base, result)
           : _resolve(base, validations, result);
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(resolved, existingObjects),
-        diagnostics: {
-          'policy': policy.name,
-          'availability': availability.toJson(),
-          'provider': result.provider,
-          'providerVersion': ?result.providerVersion,
-          'durationMs': result.duration.inMilliseconds,
-          'rawStructuredResult': result.toJson(),
-          'validation': validations
-              .map((item) => item.toJson())
-              .toList(growable: false),
-        },
+        diagnostics: _diagnostics(
+          availability: availability,
+          result: result,
+          invoked: true,
+          resultStatus: 'success',
+          durationMs: invocationWatch.elapsedMilliseconds,
+          validations: validations,
+        ),
       );
     } catch (error) {
+      invocationWatch.stop();
+      final status = error is TimeoutException
+          ? 'timeout'
+          : error is FormatException
+          ? 'invalidResult'
+          : 'providerError';
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
           'policy': policy.name,
-          'availability': availability.toJson(),
+          'provider': availability.provider,
+          'providerVersion': ?availability.providerVersion,
+          'availability': availability.state.name,
+          'availabilityDetail': availability.toJson(),
+          'invoked': true,
           'skipped': true,
-          'reason': error is TimeoutException
-              ? 'local intelligence timed out'
-              : 'local intelligence failed: ${error.runtimeType}',
+          'imageInput': false,
+          'ocrInput': false,
+          'requestImageProvided': request.imageBytes.isNotEmpty,
+          'requestOcrProvided': request.blocks.isNotEmpty,
+          'durationMs': invocationWatch.elapsedMilliseconds,
+          'result': status,
+          'reason': status,
+          'errorType': error.runtimeType.toString(),
         },
       );
     }
   }
 
-  bool _shouldInterpret(
+  _PolicyDecision _policyDecision(
     ProcessingContext context,
     List<ExtractedObject> objects,
   ) {
-    if (policy == IntelligenceUsagePolicy.disabled) return false;
-    final type = objects.first.type.value;
-    if (!_actionableTypes.contains(type)) return false;
-    if (policy == IntelligenceUsagePolicy.lowConfidenceOnly) {
-      return (context.classification?.confidence ?? 0) < 0.75;
+    if (policy == IntelligenceUsagePolicy.disabled) {
+      return const _PolicyDecision(false, 'Intelligence is disabled.');
     }
-    return true;
+    if (objects.isEmpty) {
+      return const _PolicyDecision(false, 'No deterministic candidate.');
+    }
+    final type = objects.first.type.value;
+    if (policy == IntelligenceUsagePolicy.alwaysForSupportedTypes) {
+      return _providerSupportedTypes.contains(type)
+          ? const _PolicyDecision(
+              true,
+              'Debug policy invokes all provider-supported types.',
+            )
+          : _PolicyDecision(
+              false,
+              'Type $type is unsupported by the provider.',
+            );
+    }
+    if (!_actionableTypes.contains(type)) {
+      return _PolicyDecision(false, 'Type $type is not actionable.');
+    }
+    if (policy == IntelligenceUsagePolicy.lowConfidenceOnly &&
+        (context.classification?.confidence ?? 0) >= _lowConfidenceThreshold) {
+      return const _PolicyDecision(
+        false,
+        'Deterministic classification met the confidence threshold.',
+      );
+    }
+    return const _PolicyDecision(true, 'Policy selected local intelligence.');
   }
 
   IntelligenceRequest _request(
@@ -163,16 +237,72 @@ final class IntelligenceEnricher {
                 'id': line.id,
                 'text': line.text,
                 'bounds': ?line.boundingBox?.toJson(),
+                'confidence': ?line.confidence,
               },
           ],
+          confidence: _blockConfidence(
+            context.recognizedText.blocks[blockIndex].lines,
+          ),
+          weight: context.ocrAnalysis
+              .signalFor(context.recognizedText.blocks[blockIndex].id)
+              .weight,
+          signals: context.ocrAnalysis
+              .signalFor(context.recognizedText.blocks[blockIndex].id)
+              .reasons,
+          duplicateOf: context.ocrAnalysis
+              .signalFor(context.recognizedText.blocks[blockIndex].id)
+              .duplicateOf,
         ),
     ],
     entities: context.entities.map(_entityJson).toList(growable: false),
     deterministicCandidates: objects
         .map(_candidateJson)
         .toList(growable: false),
+    imageBytes: context.imageBytes,
+    imageWidth: context.screenshot.width,
+    imageHeight: context.screenshot.height,
     interpretationVersion: ProcessingVersion.intelligence,
   );
+
+  JsonMap _diagnostics({
+    required IntelligenceAvailability availability,
+    required IntelligenceResult result,
+    required bool invoked,
+    required String resultStatus,
+    required int durationMs,
+    required List<ValidatedInterpretation> validations,
+    String? reason,
+  }) => {
+    'policy': policy.name,
+    'provider': result.provider,
+    'providerVersion': ?result.providerVersion,
+    'availability': availability.state.name,
+    'availabilityDetail': availability.toJson(),
+    'invoked': invoked,
+    'skipped': false,
+    'imageInput': result.imageInput,
+    'ocrInput': result.ocrInput,
+    'inputImageWidth': ?result.inputImageWidth,
+    'inputImageHeight': ?result.inputImageHeight,
+    'durationMs': result.duration.inMilliseconds > 0
+        ? result.duration.inMilliseconds
+        : durationMs,
+    'result': resultStatus,
+    'reason': ?reason,
+    'rawStructuredResult': result.toJson(),
+    'validation': validations
+        .map((item) => item.toJson())
+        .toList(growable: false),
+  };
+
+  static double? _blockConfidence(List<dynamic> lines) {
+    final values = lines
+        .map((line) => line.confidence)
+        .whereType<double>()
+        .toList(growable: false);
+    if (values.isEmpty) return null;
+    return values.reduce((left, right) => left + right) / values.length;
+  }
 
   Future<T> _serialized<T>(Future<T> Function() operation) {
     final completer = Completer<T>();
@@ -214,9 +344,16 @@ final class IntelligenceEnricher {
       object.copyWith(
         type: ExtractedObjectType.reference,
         subtype: 'reference.local-ai-no-action',
+        title: 'Reference',
+        clearSubtitle: true,
         confidence: 0.75,
         structuredData: {
-          ...object.structuredData,
+          for (final entry in object.structuredData.entries)
+            if (entry.key == '_parserId' ||
+                entry.key == 'classificationReasons' ||
+                entry.key == 'entityIds')
+              entry.key: entry.value,
+          '_fieldMetadata': const <String, Object?>{},
           '_suppressActions': true,
           '_intelligence': {
             'provider': result.provider,
@@ -235,17 +372,27 @@ final class IntelligenceEnricher {
     ValidatedInterpretation validation,
     IntelligenceResult result,
   ) {
-    final data = <String, Object?>{...base.structuredData};
-    final metadata = _deterministicFieldMetadata(base);
-    var title = base.title;
+    final data = <String, Object?>{
+      for (final entry in base.structuredData.entries)
+        if (entry.key == '_parserId' ||
+            entry.key == 'classificationReasons' ||
+            entry.key == 'entityIds')
+          entry.key: entry.value,
+    };
+    final metadata = <String, Object?>{};
+    String? validatedTitle;
     for (final entry in validation.fields.entries) {
       if (entry.key == 'title') {
-        title = entry.value.value.toString();
+        validatedTitle = entry.value.value.toString();
       } else {
         data[entry.key] = entry.value.value;
       }
       metadata[entry.key] = entry.value.toJson();
     }
+    final title =
+        validatedTitle ??
+        _titleFromFields(validation.type, data) ??
+        _fallbackTitle(validation.type);
     _deriveTemporalFields(validation.type, data);
     _derivePresentationFields(validation.type, title, data);
     data['_fieldMetadata'] = metadata;
@@ -263,11 +410,13 @@ final class IntelligenceEnricher {
     final confidence = confidences.isEmpty
         ? base.confidence
         : confidences.reduce((a, b) => a + b) / confidences.length;
+    final subtitle = _subtitle(validation.type, data);
     return base.copyWith(
       type: ExtractedObjectType(validation.type),
       subtype: validation.subtype ?? '${validation.type}.local-ai',
       title: title,
-      subtitle: _subtitle(validation.type, data) ?? base.subtitle,
+      subtitle: subtitle,
+      clearSubtitle: subtitle == null,
       structuredData: data,
       confidence: confidence,
       updatedAt: clock.now(),
@@ -370,27 +519,6 @@ final class IntelligenceEnricher {
     },
   };
 
-  static Map<String, Object?> _deterministicFieldMetadata(
-    ExtractedObject object,
-  ) => {
-    'title': {
-      'source': FieldProvenance.machineDeterministic.name,
-      'confidence': object.confidence,
-      'confidenceBasis': ConfidenceBasis.heuristic.name,
-      'evidence': const <String>[],
-    },
-    for (final entry in object.structuredData.entries)
-      if (!entry.key.startsWith('_') &&
-          entry.key != 'classificationReasons' &&
-          entry.key != 'entityIds')
-        entry.key: {
-          'source': FieldProvenance.machineDeterministic.name,
-          'confidence': object.confidence,
-          'confidenceBasis': ConfidenceBasis.heuristic.name,
-          'evidence': const <String>[],
-        },
-  };
-
   static void _deriveTemporalFields(String type, Map<String, Object?> data) {
     final date = data['date'];
     final time = data['time'];
@@ -413,13 +541,37 @@ final class IntelligenceEnricher {
     Map<String, Object?> data,
   ) {
     if (type == 'place') {
-      data['mapsQuery'] = [
-        data['name'] ?? title,
+      final query = [
         data['address'],
-        data['city'],
+        data['name'] ?? title,
+        data['locality'],
+        data['region'],
+        data['country'],
       ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
+      if (query.isNotEmpty) data['mapsQuery'] = query;
     }
   }
+
+  static String? _titleFromFields(String type, Map<String, Object?> data) =>
+      switch (type) {
+        'place' => data['name'] as String?,
+        'product' => data['productName'] as String?,
+        'coupon' => data['merchant'] as String?,
+        'conversationTask' => data['task'] as String?,
+        'order' => data['merchant'] as String?,
+        _ => null,
+      };
+
+  static String _fallbackTitle(String type) => switch (type) {
+    'place' => 'Place',
+    'product' => 'Possible product',
+    'event' => 'Event',
+    'order' => 'Possible order',
+    'coupon' => 'Coupon',
+    'conversationTask' => 'Conversation task',
+    'reference' => 'Reference',
+    _ => 'Screenshot',
+  };
 
   static String? _subtitle(String type, Map<String, Object?> data) =>
       switch (type) {
@@ -427,7 +579,8 @@ final class IntelligenceEnricher {
         'coupon' =>
           data['couponCode'] is String ? 'Code ${data['couponCode']}' : null,
         'product' => data['price'] as String?,
-        'place' => (data['address'] ?? data['city']) as String?,
+        'place' =>
+          (data['address'] ?? data['locality'] ?? data['city']) as String?,
         'conversationTask' => data['person'] as String?,
         'order' =>
           data['trackingNumber'] is String
@@ -444,4 +597,20 @@ final class IntelligenceEnricher {
     'conversationTask',
     'order',
   };
+
+  static const _providerSupportedTypes = {
+    ..._actionableTypes,
+    'conversation',
+    'reference',
+    'other',
+    'generic',
+  };
+  static const _lowConfidenceThreshold = 0.75;
+}
+
+final class _PolicyDecision {
+  const _PolicyDecision(this.invoke, this.reason);
+
+  final bool invoke;
+  final String reason;
 }

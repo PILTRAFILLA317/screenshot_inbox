@@ -11,11 +11,14 @@ Nano must be verified on physical devices.
 3. Verify normalized OCR block coordinates are between `0` and `1`, entities
    reference real block IDs, and the deterministic parser still has a usable
    candidate.
-4. Inspect `LOCAL INTELLIGENCE` for provider, availability, duration, structured
-   output, accepted/rejected fields, and warnings.
-5. Verify a model failure or timeout leaves the deterministic object usable and
+4. Inspect `PROVIDER EXECUTION` for policy, selected provider, real availability,
+   invocation, actual image/OCR modality, duration, result, and fallback reason.
+5. Inspect `AI STRUCTURED OUTPUT`, `VALIDATION RESULT`, `FIELD PROVENANCE`, and
+   `ACTION DECISIONS`. A high-impact action must show the field and evidence that
+   accepted it, or an explicit rejection such as `trackingNumber == null`.
+6. Verify a model failure or timeout leaves the deterministic object usable and
    never presents a blocking product error.
-6. Use the realistic fixtures in `test/fixtures/benchmark/corpus.json`. Do not
+7. Use the realistic fixtures in `test/fixtures/benchmark/corpus.json`. Do not
    treat unit-test fakes as model-quality measurements.
 
 The debug policy defaults to `alwaysForSupportedTypes`. Override it without a
@@ -70,9 +73,27 @@ Check `AVAILABLE`, `DOWNLOADABLE`, `DOWNLOADING`, and `UNAVAILABLE` states. The
 app does not force a model download while processing a screenshot. A model that
 is not ready simply lowers interpretation accuracy for that run.
 
-The Kotlin bridge prefers ML Kit Structured Output when the device reports the
-feature available. Its JSON fallback is still validated in Dart and never
-persists raw model output directly.
+The Kotlin bridge sends a real multimodal request (`ImagePart` plus the structured
+OCR prompt). It decodes and resizes the screenshot to a maximum 1280-pixel edge
+before inference. The bridge prefers ML Kit Structured Output when available;
+its JSON fallback uses the same multimodal request and is still validated in
+Dart before merge.
+
+For a successful Android run, require all of these values in the inspector/log:
+
+```text
+provider: geminiNano
+availability: available
+invoked: true
+imageInput: true
+ocrInput: true
+result: success
+```
+
+The iOS 26 Foundation Models API used by the current Xcode 26 project is
+text-only. Its bridge therefore reports `imageInput: false` rather than claiming
+multimodal execution. Revisit the native attachment API when the project moves
+to the iOS 27 SDK; do not silently route screenshots to cloud inference.
 
 Official references:
 

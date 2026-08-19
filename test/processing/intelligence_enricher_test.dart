@@ -183,7 +183,8 @@ void main() {
       value.objects.single.structuredData['startsAt'],
       '2026-10-01T19:00:00',
     );
-    expect(value.diagnostics['reason'], contains('timed out'));
+    expect(value.diagnostics['result'], 'timeout');
+    expect(value.diagnostics['reason'], 'timeout');
   });
 }
 

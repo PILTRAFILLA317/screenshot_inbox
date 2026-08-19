@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:screenshot_inbox/core/utils/json_types.dart';
 
 enum IntelligenceAvailabilityState {
@@ -57,6 +59,10 @@ final class OcrBlockInput {
     required this.order,
     this.bounds,
     this.lines = const [],
+    this.confidence,
+    this.weight = 1,
+    this.signals = const [],
+    this.duplicateOf,
   });
 
   final String id;
@@ -64,6 +70,10 @@ final class OcrBlockInput {
   final int order;
   final JsonMap? bounds;
   final List<JsonMap> lines;
+  final double? confidence;
+  final double weight;
+  final List<String> signals;
+  final String? duplicateOf;
 
   JsonMap toJson() => {
     'id': id,
@@ -71,6 +81,10 @@ final class OcrBlockInput {
     'order': order,
     'bounds': ?bounds,
     'lines': lines,
+    'confidence': ?confidence,
+    'weight': weight,
+    'signals': signals,
+    'duplicateOf': ?duplicateOf,
   };
 }
 
@@ -83,6 +97,9 @@ final class IntelligenceRequest {
     required this.blocks,
     required this.entities,
     required this.deterministicCandidates,
+    required this.imageBytes,
+    required this.imageWidth,
+    required this.imageHeight,
     this.typeHint,
     this.interpretationVersion = 1,
   });
@@ -95,6 +112,9 @@ final class IntelligenceRequest {
   final List<OcrBlockInput> blocks;
   final List<JsonMap> entities;
   final List<JsonMap> deterministicCandidates;
+  final Uint8List imageBytes;
+  final int imageWidth;
+  final int imageHeight;
   final int interpretationVersion;
 
   JsonMap toJson() => {
@@ -106,6 +126,13 @@ final class IntelligenceRequest {
     'blocks': blocks.map((block) => block.toJson()).toList(growable: false),
     'entities': entities,
     'deterministicCandidates': deterministicCandidates,
+    'imageBytes': imageBytes,
+    'image': {
+      'encodedBytes': imageBytes.length,
+      'sourceWidth': imageWidth,
+      'sourceHeight': imageHeight,
+      'maxInferenceEdge': 1280,
+    },
     'interpretationVersion': interpretationVersion,
   };
 }
@@ -190,12 +217,20 @@ final class IntelligenceResult {
     required this.interpretations,
     required this.duration,
     this.providerVersion,
+    this.imageInput = false,
+    this.ocrInput = false,
+    this.inputImageWidth,
+    this.inputImageHeight,
   });
 
   final String provider;
   final String? providerVersion;
   final List<IntelligenceInterpretation> interpretations;
   final Duration duration;
+  final bool imageInput;
+  final bool ocrInput;
+  final int? inputImageWidth;
+  final int? inputImageHeight;
 
   factory IntelligenceResult.fromJson(JsonMap json) => IntelligenceResult(
     provider: json['provider'] as String? ?? 'local-unknown',
@@ -211,12 +246,20 @@ final class IntelligenceResult {
     duration: Duration(
       milliseconds: (json['durationMs'] as num?)?.round() ?? 0,
     ),
+    imageInput: json['imageInput'] == true,
+    ocrInput: json['ocrInput'] == true,
+    inputImageWidth: (json['inputImageWidth'] as num?)?.round(),
+    inputImageHeight: (json['inputImageHeight'] as num?)?.round(),
   );
 
   JsonMap toJson() => {
     'provider': provider,
     'providerVersion': ?providerVersion,
     'durationMs': duration.inMilliseconds,
+    'imageInput': imageInput,
+    'ocrInput': ocrInput,
+    'inputImageWidth': ?inputImageWidth,
+    'inputImageHeight': ?inputImageHeight,
     'interpretations': interpretations
         .map((item) => item.toJson())
         .toList(growable: false),

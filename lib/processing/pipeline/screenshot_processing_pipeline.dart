@@ -14,6 +14,7 @@ import 'package:screenshot_inbox/processing/entities/entity_extractor.dart';
 import 'package:screenshot_inbox/processing/intelligence/intelligence_enricher.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_engine.dart';
 import 'package:screenshot_inbox/processing/ocr/recognition_services.dart';
+import 'package:screenshot_inbox/processing/ocr/ocr_evidence_analyzer.dart';
 import 'package:screenshot_inbox/processing/parsers/parser_registry.dart';
 import 'package:screenshot_inbox/processing/parsers/screenshot_parser.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_context.dart';
@@ -33,6 +34,7 @@ final class ScreenshotProcessingPipeline {
     required this.store,
     required this.clock,
     required this.ids,
+    this.ocrEvidenceAnalyzer = const OcrEvidenceAnalyzer(),
     this.intelligence,
     this.existingObjects,
   });
@@ -48,6 +50,7 @@ final class ScreenshotProcessingPipeline {
   final ProcessingStore store;
   final Clock clock;
   final IdGenerator ids;
+  final OcrEvidenceAnalyzer ocrEvidenceAnalyzer;
   final IntelligenceEnricher? intelligence;
   final ExtractedObjectRepository? existingObjects;
 
@@ -72,7 +75,10 @@ final class ScreenshotProcessingPipeline {
       final recognizedText = (await textRecognition.recognize(imageBytes))
           .normalizedFor(width: screenshot.width, height: screenshot.height);
       ocrWatch.stop();
-      context = context.copyWith(recognizedText: recognizedText);
+      context = context.copyWith(
+        recognizedText: recognizedText,
+        ocrAnalysis: ocrEvidenceAnalyzer.analyze(recognizedText),
+      );
       final barcodes = await barcodeRecognition.recognize(imageBytes);
       context = context.copyWith(barcodes: barcodes);
       final deterministicWatch = Stopwatch()..start();
@@ -93,8 +99,16 @@ final class ScreenshotProcessingPipeline {
           ? IntelligenceEnrichmentResult(
               objects: parseResult.objects,
               diagnostics: const {
-                'skipped': true,
-                'reason': 'no intelligence stage configured',
+                'policy': 'notConfigured',
+                'provider': null,
+                'availability': null,
+                'invoked': false,
+                'imageInput': false,
+                'ocrInput': false,
+                'durationMs': 0,
+                'result': 'policySkipped',
+                'reason': 'policySkipped',
+                'policyDecision': 'No intelligence stage configured.',
               },
             )
           : await intelligence!.enrich(
@@ -106,17 +120,20 @@ final class ScreenshotProcessingPipeline {
         'processing.interpretation',
         metadata: {
           'screenshotId': screenshot.id,
+          'classification': classification.type.value,
           'parser': parser?.id,
-          'provider': enrichment.diagnostics['provider'],
-          'availability': enrichment.diagnostics['availability'],
-          'reason': enrichment.diagnostics['reason'],
+          ...enrichment.diagnostics,
         },
       );
       intelligenceWatch.stop();
       final validationWatch = Stopwatch()..start();
       final objects = enrichment.objects;
       validationWatch.stop();
-      final suggestedActions = await actions.generate(screenshot.id, objects);
+      final actionGeneration = await actions.generateWithDiagnostics(
+        screenshot.id,
+        objects,
+      );
+      final suggestedActions = actionGeneration.actions;
       final lifecycleEvaluations = lifecycle.evaluate(objects);
       final evaluations = lifecycleEvaluations.isEmpty
           ? const [
@@ -141,6 +158,7 @@ final class ScreenshotProcessingPipeline {
         deterministicObjects: parseResult.objects,
         intelligence: enrichment.diagnostics,
         actions: suggestedActions,
+        actionDecisions: actionGeneration.decisions,
         evaluations: evaluations,
         timings: {
           'ocrMs': ocrWatch.elapsedMilliseconds,
@@ -209,6 +227,7 @@ final class ScreenshotProcessingPipeline {
     required List<ExtractedObject> deterministicObjects,
     required Map<String, Object?> intelligence,
     required List<dynamic> actions,
+    required List<Map<String, Object?>> actionDecisions,
     required List<LifecycleEvaluation> evaluations,
     required Map<String, Object?> timings,
   }) {
@@ -243,6 +262,7 @@ final class ScreenshotProcessingPipeline {
             'metadata': entity.metadata,
           },
       ],
+      'ocrEvidence': context.ocrAnalysis.toJson(),
       'classification': {
         'type': context.classification?.type.value,
         'subtype': context.classification?.subtype,
@@ -261,7 +281,24 @@ final class ScreenshotProcessingPipeline {
             },
         ],
       },
+      'intelligencePolicy': {
+        'policy': intelligence['policy'],
+        'decision': intelligence['policyDecision'],
+      },
+      'providerExecution': {
+        'provider': intelligence['provider'],
+        'availability': intelligence['availability'],
+        'availabilityDetail': intelligence['availabilityDetail'],
+        'invoked': intelligence['invoked'],
+        'imageInput': intelligence['imageInput'],
+        'ocrInput': intelligence['ocrInput'],
+        'durationMs': intelligence['durationMs'],
+        'result': intelligence['result'],
+        'reason': intelligence['reason'],
+      },
       'localIntelligence': intelligence,
+      'aiStructuredOutput': intelligence['rawStructuredResult'],
+      'validationResult': intelligence['validation'],
       'actions': [
         for (final action in actions)
           {
@@ -270,6 +307,10 @@ final class ScreenshotProcessingPipeline {
             'payload': action.payload,
           },
       ],
+      'actionDecisions': actionDecisions,
+      'rejectedActions': actionDecisions
+          .where((decision) => decision['accepted'] == false)
+          .toList(growable: false),
       'lifecycle': [
         for (final evaluation in evaluations)
           {
@@ -287,6 +328,11 @@ final class ScreenshotProcessingPipeline {
             ...object.structuredData,
             '_debug': {
               ...debug,
+              'finalFields': {
+                for (final entry in object.structuredData.entries)
+                  if (!entry.key.startsWith('_')) entry.key: entry.value,
+              },
+              'fieldProvenance': object.structuredData['_fieldMetadata'],
               'finalObject': {
                 'type': object.type.value,
                 'subtype': object.subtype,

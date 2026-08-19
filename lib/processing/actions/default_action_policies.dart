@@ -3,15 +3,18 @@ import 'package:screenshot_inbox/domain/actions/suggested_action.dart';
 import 'package:screenshot_inbox/domain/actions/calendar_event_policy.dart';
 import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
 import 'package:screenshot_inbox/processing/actions/action_policy.dart';
+import 'package:screenshot_inbox/processing/actions/action_evidence_gate.dart';
 
 final class EventActionPolicy implements ActionPolicy {
   const EventActionPolicy([
     this.clock = const SystemClock(),
     this.calendarPolicy = const CalendarEventPolicy(),
+    this.evidenceGate = const ActionEvidenceGate(),
   ]);
 
   final Clock clock;
   final CalendarEventPolicy calendarPolicy;
+  final ActionEvidenceGate evidenceGate;
 
   @override
   String get id => 'event-actions.v1';
@@ -24,20 +27,40 @@ final class EventActionPolicy implements ActionPolicy {
   @override
   Future<List<ActionProposal>> propose(ExtractedObject object) async {
     final data = object.structuredData;
+    final validDate = evidenceGate.eventDate(object);
+    final validTitle = evidenceGate.eventTitle(object);
     final startsAt = _date(data['startsAt']);
     final reminderAt = startsAt == null
         ? null
         : _reminderBefore(startsAt, clock.now(), const Duration(hours: 1));
-    final place = _firstString(data, const ['venue', 'city']);
-    final calendarPayload = calendarPolicy.payloadFor(object);
+    final venue = evidenceGate.reliableField(object, 'venue');
+    final city = evidenceGate.reliableField(object, 'city');
+    final place = venue.accepted && city.accepted
+        ? '${venue.value}, ${city.value}'
+        : null;
+    final validatedCalendarPayload = validDate.accepted && validTitle.accepted
+        ? calendarPolicy.payloadFor(object)
+        : null;
+    final calendarPayload =
+        validatedCalendarPayload ??
+        {
+          'label': 'Review event',
+          'title': object.title,
+          if (startsAt != null) 'startsAt': startsAt.toIso8601String(),
+          'isAllDay': data['time'] == null,
+          'defaultDurationMinutes': data['time'] == null
+              ? const Duration(days: 1).inMinutes
+              : const Duration(hours: 2).inMinutes,
+          'location': ?place,
+          'reviewRequired': true,
+        };
     return [
-      if (calendarPayload != null)
-        ActionProposal(
-          type: SuggestedActionType.calendar,
-          payload: calendarPayload,
-          confidence: object.confidence,
-        ),
-      if (reminderAt != null)
+      ActionProposal(
+        type: SuggestedActionType.calendar,
+        payload: calendarPayload,
+        confidence: object.confidence,
+      ),
+      if (reminderAt != null && validDate.accepted && validTitle.accepted)
         ActionProposal(
           type: SuggestedActionType.reminder,
           payload: {
@@ -63,9 +86,13 @@ final class EventActionPolicy implements ActionPolicy {
 }
 
 final class CouponActionPolicy implements ActionPolicy {
-  const CouponActionPolicy([this.clock = const SystemClock()]);
+  const CouponActionPolicy([
+    this.clock = const SystemClock(),
+    this.evidenceGate = const ActionEvidenceGate(),
+  ]);
 
   final Clock clock;
+  final ActionEvidenceGate evidenceGate;
 
   @override
   String get id => 'coupon-actions.v1';
@@ -77,16 +104,16 @@ final class CouponActionPolicy implements ActionPolicy {
 
   @override
   Future<List<ActionProposal>> propose(ExtractedObject object) async {
-    final code = object.structuredData['couponCode'];
+    final code = evidenceGate.couponCode(object);
     final expiry = _date(object.structuredData['expiresAt']);
     final reminderAt = expiry == null
         ? null
         : _reminderBefore(expiry, clock.now(), const Duration(days: 1));
     return [
-      if (code is String && code.isNotEmpty)
+      if (code.accepted)
         ActionProposal(
           type: SuggestedActionType.copy,
-          payload: {'label': 'Copy code', 'text': code},
+          payload: {'label': 'Copy code', 'text': code.value},
           confidence: object.confidence,
         ),
       if (reminderAt != null)
@@ -95,8 +122,8 @@ final class CouponActionPolicy implements ActionPolicy {
           payload: {
             'label': 'Remind before expiry',
             'title': object.title,
-            'body': code is String
-                ? 'Coupon code: $code'
+            'body': code.accepted
+                ? 'Coupon code: ${code.value}'
                 : 'Coupon expires soon',
             'remindAt': reminderAt.toIso8601String(),
           },
@@ -147,7 +174,9 @@ final class ConversationTaskActionPolicy implements ActionPolicy {
 }
 
 final class OrderActionPolicy implements ActionPolicy {
-  const OrderActionPolicy();
+  const OrderActionPolicy([this.evidenceGate = const ActionEvidenceGate()]);
+
+  final ActionEvidenceGate evidenceGate;
 
   @override
   String get id => 'order-actions.v1';
@@ -159,32 +188,37 @@ final class OrderActionPolicy implements ActionPolicy {
 
   @override
   Future<List<ActionProposal>> propose(ExtractedObject object) async {
-    final tracking = object.structuredData['trackingNumber'];
-    final url = object.structuredData['url'];
+    final tracking = evidenceGate.trackingNumber(object);
+    final trackingUrl = evidenceGate.trackingUrl(object);
+    final url = evidenceGate.reliableField(
+      object,
+      'url',
+      validate: (value) => Uri.tryParse(value)?.hasScheme == true,
+    );
     return [
-      if (url is String && url.isNotEmpty && tracking is String)
+      if (trackingUrl.accepted)
         ActionProposal(
           type: SuggestedActionType.track,
-          payload: {'label': 'Open tracking URL', 'url': url},
+          payload: {'label': 'Track package', 'url': trackingUrl.value},
           confidence: object.confidence,
         )
-      else if (url is String && url.isNotEmpty)
+      else if (url.accepted)
         ActionProposal(
           type: SuggestedActionType.openUrl,
-          payload: {'label': 'Open URL', 'url': url},
+          payload: {'label': 'Open URL', 'url': url.value},
           confidence: object.confidence,
         ),
-      if (tracking is String && tracking.isNotEmpty)
+      if (tracking.accepted)
         ActionProposal(
           type: SuggestedActionType.copy,
-          payload: {'label': 'Copy tracking number', 'text': tracking},
+          payload: {'label': 'Copy tracking', 'text': tracking.value},
           confidence: object.confidence,
         ),
-      if (tracking is String && tracking.isNotEmpty && url is! String)
+      if (tracking.accepted && !trackingUrl.accepted)
         ActionProposal(
           type: SuggestedActionType.searchWeb,
-          payload: {'label': 'Search tracking on web', 'query': tracking},
-          confidence: object.confidence * 0.9,
+          payload: {'label': 'Track package', 'query': tracking.value},
+          confidence: object.confidence,
         ),
     ];
   }
@@ -229,7 +263,9 @@ final class ProductActionPolicy implements ActionPolicy {
 }
 
 final class PlaceActionPolicy implements ActionPolicy {
-  const PlaceActionPolicy();
+  const PlaceActionPolicy([this.evidenceGate = const ActionEvidenceGate()]);
+
+  final ActionEvidenceGate evidenceGate;
 
   @override
   String get id => 'place-actions.v1';
@@ -241,26 +277,22 @@ final class PlaceActionPolicy implements ActionPolicy {
 
   @override
   Future<List<ActionProposal>> propose(ExtractedObject object) async {
-    final query = _firstString(object.structuredData, const [
-      'mapsQuery',
-      'address',
-      'name',
-    ]);
+    final query = evidenceGate.mapsQuery(object);
     return [
-      if (query != null)
+      if (query.accepted)
         ActionProposal(
           type: SuggestedActionType.maps,
           payload: {
             'label': 'Open Maps',
-            'query': query,
+            'query': query.value,
             'title': object.title,
           },
           confidence: object.confidence,
         ),
-      if (query != null)
+      if (query.accepted)
         ActionProposal(
           type: SuggestedActionType.searchWeb,
-          payload: {'label': 'Search web', 'query': query},
+          payload: {'label': 'Search web', 'query': query.value},
           confidence: object.confidence * 0.95,
         ),
     ];
@@ -316,14 +348,6 @@ final class UrlActionPolicy implements ActionPolicy {
 
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value)?.toUtc() : null;
-
-String? _firstString(Map<String, Object?> data, List<String> keys) {
-  for (final key in keys) {
-    final value = data[key];
-    if (value is String && value.trim().isNotEmpty) return value.trim();
-  }
-  return null;
-}
 
 DateTime? _reminderBefore(
   DateTime target,

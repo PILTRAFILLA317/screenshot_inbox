@@ -304,6 +304,12 @@ final thumbnailProvider = FutureProvider.autoDispose.family<Uint8List?, String>(
   (ref, assetId) => ref.watch(photoRepositoryProvider).getThumbnail(assetId),
 );
 
+final screenshotPreviewProvider = FutureProvider.autoDispose
+    .family<Uint8List?, String>(
+      (ref, assetId) =>
+          ref.watch(photoRepositoryProvider).getProcessingImage(assetId),
+    );
+
 final currentPhotoPermissionProvider = FutureProvider<PhotoPermissionState>(
   (ref) => ref.watch(photoRepositoryProvider).currentPermission(),
 );

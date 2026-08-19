@@ -198,12 +198,12 @@ final class RegexEntityExtractor implements EntityExtractor {
   ) {
     for (final match in pattern.allMatches(text)) {
       final value = match.group(1)!;
-      if (!_looksLikeCode(value)) continue;
+      if (!_looksLikeCode(value, type)) continue;
       add(type, value, value.toUpperCase(), confidence);
     }
   }
 
-  static bool _looksLikeCode(String value) {
+  static bool _looksLikeCode(String value, EntityType type) {
     if (value.length < 4 || value.length > 32) return false;
     final lower = value.toLowerCase();
     const stopWords = {
@@ -216,7 +216,12 @@ final class RegexEntityExtractor implements EntityExtractor {
       'numero',
       'tracking',
     };
-    return !stopWords.contains(lower) && RegExp(r'[A-Za-z]').hasMatch(value);
+    if (stopWords.contains(lower)) return false;
+    if (type == EntityType.trackingCode || type == EntityType.orderCode) {
+      return RegExp(r'\d').hasMatch(value) &&
+          (RegExp(r'[A-Za-z]').hasMatch(value) || value.length >= 8);
+    }
+    return RegExp(r'[A-Za-z]').hasMatch(value);
   }
 
   static List<String> _evidenceFor(ProcessingContext context, String raw) {

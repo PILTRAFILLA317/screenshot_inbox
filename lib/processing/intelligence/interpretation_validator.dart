@@ -79,9 +79,7 @@ final class InterpretationValidator {
       );
     }
 
-    final blocksById = {
-      for (final block in request.blocks) block.id: block.text,
-    };
+    final blocksById = {for (final block in request.blocks) block.id: block};
     final deterministicFields = _candidateFields(deterministicCandidate);
     final allowed = _allowedFields[type] ?? const <String>{};
     for (final field in interpretation.fields) {
@@ -100,7 +98,8 @@ final class InterpretationValidator {
           .where(
             (id) =>
                 blocksById.containsKey(id) &&
-                _evidenceSupports(field.name, value, blocksById[id]!),
+                blocksById[id]!.weight >= _minimumEvidenceWeight &&
+                _evidenceSupports(field.name, value, blocksById[id]!.text),
           )
           .toSet()
           .toList(growable: false);
@@ -111,9 +110,19 @@ final class InterpretationValidator {
       final corroborated =
           deterministic != null &&
           _comparable(deterministic) == _comparable(value);
-      if (evidence.isEmpty && !corroborated) {
+      if (evidence.isEmpty) {
         rejected.add(field.name);
-        warnings.add('${field.name}: rejected because it has no OCR evidence.');
+        warnings.add(
+          '${field.name}: rejected because it has no reliable OCR evidence.',
+        );
+        continue;
+      }
+      if (!_contextSupports(field.name, evidence, request)) {
+        rejected.add(field.name);
+        warnings.add(
+          '${field.name}: rejected because its surrounding context does not '
+          'support that semantic field.',
+        );
         continue;
       }
 
@@ -202,10 +211,29 @@ final class InterpretationValidator {
           (uri.scheme == 'https' || uri.scheme == 'http') &&
           uri.host.isNotEmpty;
     }
+    if (name == 'trackingUrl') {
+      final uri = Uri.tryParse(value);
+      return uri != null &&
+          (uri.scheme == 'https' || uri.scheme == 'http') &&
+          uri.host.isNotEmpty;
+    }
+    if (name == 'latitude') {
+      final parsed = double.tryParse(value);
+      return parsed != null && parsed >= -90 && parsed <= 90;
+    }
+    if (name == 'longitude') {
+      final parsed = double.tryParse(value);
+      return parsed != null && parsed >= -180 && parsed <= 180;
+    }
     if (_codeFields.contains(name)) {
-      return value.length >= 3 &&
+      final minimumLength = name == 'trackingNumber' ? 8 : 4;
+      final shapeValid =
+          value.length >= minimumLength &&
           value.length <= 40 &&
           RegExp(r'^[A-Z0-9_-]+$').hasMatch(value);
+      if (!shapeValid) return false;
+      if (name == 'couponCode') return RegExp(r'[A-Z]').hasMatch(value);
+      return RegExp(r'\d').hasMatch(value);
     }
     return value.length >= 2;
   }
@@ -243,6 +271,30 @@ final class InterpretationValidator {
     return matches / words.length >= 0.6;
   }
 
+  static bool _contextSupports(
+    String name,
+    List<String> evidence,
+    IntelligenceRequest request,
+  ) {
+    final pattern = switch (name) {
+      'trackingNumber' || 'trackingUrl' => _trackingContext,
+      'couponCode' => _couponContext,
+      'orderNumber' => _orderContext,
+      _ => null,
+    };
+    if (pattern == null) return true;
+    final evidenceOrders = request.blocks
+        .where((block) => evidence.contains(block.id))
+        .map((block) => block.order)
+        .toList(growable: false);
+    return request.blocks.any(
+      (block) =>
+          block.weight >= _minimumEvidenceWeight &&
+          evidenceOrders.any((order) => (block.order - order).abs() <= 2) &&
+          pattern.hasMatch(block.text),
+    );
+  }
+
   static const _supportedTypes = {
     'event',
     'coupon',
@@ -269,7 +321,16 @@ final class InterpretationValidator {
     },
     'coupon': {'merchant', 'discount', 'couponCode', 'expiryDate'},
     'product': {'productName', 'price', 'merchant', 'url', 'variant'},
-    'place': {'name', 'address', 'city', 'country'},
+    'place': {
+      'name',
+      'address',
+      'city',
+      'locality',
+      'region',
+      'country',
+      'latitude',
+      'longitude',
+    },
     'conversationTask': {'task', 'date', 'time', 'person'},
     'order': {
       'merchant',
@@ -279,6 +340,7 @@ final class InterpretationValidator {
       'deliveryDate',
       'status',
       'url',
+      'trackingUrl',
     },
     'reference': {},
     'other': {},
@@ -292,6 +354,22 @@ final class InterpretationValidator {
   };
   static const _timeFields = {'time'};
   static const _codeFields = {'couponCode', 'orderNumber', 'trackingNumber'};
+  static const _minimumEvidenceWeight = 0.5;
+  static final _trackingContext = RegExp(
+    r'\b(track(?:ing)?|shipment|carrier|seguimiento|env[ií]o|transportista|gu[ií]a)\b',
+    caseSensitive: false,
+    unicode: true,
+  );
+  static final _couponContext = RegExp(
+    r'\b(coupon|promo|discount|cup[oó]n|descuento|c[oó]digo)\b',
+    caseSensitive: false,
+    unicode: true,
+  );
+  static final _orderContext = RegExp(
+    r'\b(order|purchase|pedido|compra|orden)\b',
+    caseSensitive: false,
+    unicode: true,
+  );
   static const _monthNames = <int, List<String>>{
     1: ['jan', 'january', 'enero'],
     2: ['feb', 'february', 'febrero'],

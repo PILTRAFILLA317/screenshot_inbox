@@ -80,12 +80,21 @@ final class DebugInspectorPage extends ConsumerWidget {
 
   static const _sections = [
     'ocrBlocks',
+    'ocrEvidence',
     'deterministicEntities',
     'classification',
     'deterministicParser',
+    'intelligencePolicy',
+    'providerExecution',
     'localIntelligence',
+    'aiStructuredOutput',
+    'validationResult',
+    'fieldProvenance',
+    'finalFields',
     'finalObject',
     'actions',
+    'actionDecisions',
+    'rejectedActions',
     'lifecycle',
     'timings',
   ];

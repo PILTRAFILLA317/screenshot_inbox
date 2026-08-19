@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +9,6 @@ import 'package:screenshot_inbox/app/theme/app_theme.dart';
 import 'package:screenshot_inbox/domain/actions/suggested_action.dart';
 import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
 import 'package:screenshot_inbox/domain/inbox/inbox_item.dart';
-import 'package:screenshot_inbox/features/shared/screenshot_thumbnail.dart';
 import 'package:screenshot_inbox/features/detail/debug_inspector_page.dart';
 
 final class ScreenshotDetailPage extends ConsumerWidget {
@@ -69,14 +70,11 @@ final class _DetailBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
       children: [
-        Center(
-          child: ScreenshotThumbnail(
-            assetId: item.screenshot.assetId,
-            semanticLabel: 'Original screenshot for ${item.title}',
-            width: 220,
-            height: 286,
-            borderRadius: 14,
-          ),
+        _ScreenshotPreview(
+          assetId: item.screenshot.assetId,
+          semanticLabel: 'Original screenshot for ${item.title}',
+          sourceWidth: item.screenshot.width,
+          sourceHeight: item.screenshot.height,
         ),
         const SizedBox(height: 26),
         Row(
@@ -246,6 +244,167 @@ final class _DetailBody extends ConsumerWidget {
     final value = type?.value ?? 'reference';
     return value == 'conversationTask' ? 'Conversation task' : _humanize(value);
   }
+}
+
+final class _ScreenshotPreview extends ConsumerWidget {
+  const _ScreenshotPreview({
+    required this.assetId,
+    required this.semanticLabel,
+    required this.sourceWidth,
+    required this.sourceHeight,
+  });
+
+  final String assetId;
+  final String semanticLabel;
+  final int sourceWidth;
+  final int sourceHeight;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final preview = ref.watch(screenshotPreviewProvider(assetId));
+    final bytes = preview.asData?.value;
+    final canOpen = bytes != null && bytes.isNotEmpty;
+    final sourceAspectRatio = sourceWidth > 0 && sourceHeight > 0
+        ? sourceWidth / sourceHeight
+        : 9 / 19.5;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportHeight = MediaQuery.sizeOf(context).height;
+        final desiredHeight = constraints.maxWidth / sourceAspectRatio;
+        final previewHeight = math.min(
+          desiredHeight,
+          math.max(320.0, viewportHeight * 0.62),
+        );
+        final decodeWidth =
+            (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                .round();
+
+        return Semantics(
+          image: true,
+          button: canOpen,
+          label: canOpen
+              ? '$semanticLabel. Open full screen to zoom.'
+              : semanticLabel,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Material(
+              color: const Color(0xFFF0F0F0),
+              child: InkWell(
+                onTap: canOpen ? () => _openFullScreen(context, bytes) : null,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: previewHeight,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      preview.when(
+                        data: (value) => value == null || value.isEmpty
+                            ? const _UnavailablePreview()
+                            : Image.memory(
+                                value,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                gaplessPlayback: true,
+                                excludeFromSemantics: true,
+                                cacheWidth: decodeWidth,
+                              ),
+                        error: (_, _) => const _UnavailablePreview(),
+                        loading: () =>
+                            const ColoredBox(color: Color(0xFFEDEDED)),
+                      ),
+                      if (canOpen)
+                        const Positioned(
+                          right: 10,
+                          bottom: 10,
+                          child: _ExpandIndicator(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openFullScreen(BuildContext context, Uint8List bytes) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullScreenScreenshotPage(
+          bytes: bytes,
+          semanticLabel: semanticLabel,
+        ),
+      ),
+    );
+  }
+}
+
+final class _ExpandIndicator extends StatelessWidget {
+  const _ExpandIndicator();
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      color: Color(0xB3171717),
+      shape: BoxShape.circle,
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(9),
+      child: Icon(Icons.open_in_full, size: 18, color: Colors.white),
+    ),
+  );
+}
+
+final class _UnavailablePreview extends StatelessWidget {
+  const _UnavailablePreview();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Icon(Icons.image_not_supported_outlined, size: 28));
+}
+
+final class _FullScreenScreenshotPage extends StatelessWidget {
+  const _FullScreenScreenshotPage({
+    required this.bytes,
+    required this.semanticLabel,
+  });
+
+  final Uint8List bytes;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    appBar: AppBar(
+      backgroundColor: Colors.black,
+      foregroundColor: Colors.white,
+      title: const Text('Screenshot'),
+    ),
+    body: SafeArea(
+      top: false,
+      child: Semantics(
+        image: true,
+        label: semanticLabel,
+        child: InteractiveViewer(
+          minScale: 1,
+          maxScale: 5,
+          boundaryMargin: const EdgeInsets.all(40),
+          child: Center(
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+              excludeFromSemantics: true,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 final class _ActionRow extends ConsumerStatefulWidget {
@@ -698,8 +857,8 @@ final class _DetailSkeleton extends StatelessWidget {
     child: Column(
       children: [
         SizedBox(
-          width: 220,
-          height: 286,
+          width: double.infinity,
+          height: 420,
           child: ColoredBox(color: Color(0xFFEDEDED)),
         ),
         SizedBox(height: 26),

@@ -61,13 +61,13 @@ void main() {
       ScreenshotProcessingStatus.processed,
     );
     expect(result.screenshot.processingVersion, 2);
-    expect(result.screenshot.primaryType, ScreenshotType.event);
+    expect(result.screenshot.primaryType, ScreenshotType.reference);
     expect(result.screenshot.currentLifecycleState.name, 'actionable');
     expect(
       result.entities.map((entity) => entity.type.value),
       containsAll(['url', 'date', 'qr']),
     );
-    expect(result.objects.single.subtype, 'event.generic');
+    expect(result.objects.single.subtype, 'reference.generic');
     expect(result.actions, hasLength(1));
     expect(result.lifecycleEvents, hasLength(1));
   });
@@ -164,7 +164,10 @@ final class _FakeTextRecognition implements TextRecognitionService {
 
   @override
   Future<RecognizedText> recognize(Uint8List imageBytes) async =>
-      RecognizedText.plain(text);
+      RecognizedText(
+        fullText: text,
+        blocks: [RecognizedTextBlock(id: 'B01', text: text, lines: const [])],
+      );
 }
 
 final class _FakeBarcodeRecognition implements BarcodeRecognitionService {

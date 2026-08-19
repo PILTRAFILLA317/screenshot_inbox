@@ -235,30 +235,135 @@ final class PlaceParser extends _TypedParser {
 
   @override
   ExtractedObject build(ProcessingContext context) {
-    final name = usefulTitle(context, ignored: _TypedParser._placeNoise);
+    final details = _placeDetails(context);
+    final name =
+        details.name ?? usefulTitle(context, ignored: _TypedParser._placeNoise);
     final address =
+        details.address ??
         labeledValue(context.ocrText, const [
           'address',
-          'dirección',
-          'direccion',
+          'dirección:',
+          'direccion:',
         ]) ??
         _address(context.ocrText);
-    final city = labeledValue(context.ocrText, const ['city', 'ciudad']);
+    final locality =
+        details.locality ??
+        labeledValue(context.ocrText, const ['city', 'ciudad']);
+    final mapsQuery =
+        address ??
+        [
+          name,
+          locality,
+        ].where((value) => value != null && value.isNotEmpty).join(', ');
     return object(
       context,
       type: ExtractedObjectType.place,
       title: name,
-      subtitle: address ?? city,
+      subtype: details.savedAddress ? 'saved_address' : null,
+      subtitle: address ?? locality,
       data: {
         if (name != 'Place') 'name': name,
         'address': ?address,
-        'city': ?city,
-        if (address != null || name != 'Place')
-          'mapsQuery': [name, address, city].whereType<String>().join(', '),
+        'locality': ?locality,
+        'city': ?locality,
+        'region': ?details.region,
+        'country': ?details.country,
+        if (mapsQuery.isNotEmpty) 'mapsQuery': mapsQuery,
       },
       fallbackTitle: 'Place',
     );
   }
+
+  _PlaceDetails _placeDetails(ProcessingContext context) {
+    final blocks = context.recognizedText.blocks;
+    if (blocks.isEmpty) return const _PlaceDetails();
+    final savedIndex = blocks.indexWhere(
+      (block) => _savedAddressCue.hasMatch(block.text),
+    );
+    final addressIndex = blocks.indexWhere(
+      (block) =>
+          context.ocrAnalysis.signalFor(block.id).weight >= 0.5 &&
+          _looksLikeAddressBlock(block.text),
+    );
+    String? name;
+    if (savedIndex >= 0 && addressIndex > savedIndex) {
+      for (var index = savedIndex + 1; index < addressIndex; index++) {
+        final block = blocks[index];
+        final value = block.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (context.ocrAnalysis.signalFor(block.id).weight >= 0.5 &&
+            value.length >= 2 &&
+            value.length <= 60 &&
+            !RegExp(r'\d').hasMatch(value)) {
+          name = value;
+          break;
+        }
+      }
+    }
+    if (addressIndex < 0) {
+      return _PlaceDetails(name: name, savedAddress: savedIndex >= 0);
+    }
+    final addressLines = blocks[addressIndex].text
+        .split('\n')
+        .map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (addressLines.isEmpty) {
+      return _PlaceDetails(name: name, savedAddress: savedIndex >= 0);
+    }
+    final geographicParts = addressLines
+        .skip(1)
+        .expand((line) => line.split(','))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    return _PlaceDetails(
+      name: name,
+      address: addressLines
+          .expand((line) => line.split(','))
+          .map((part) => part.trim())
+          .where((part) => part.isNotEmpty)
+          .join(', '),
+      locality: geographicParts.firstOrNull,
+      region: geographicParts.length > 1 ? geographicParts[1] : null,
+      country: geographicParts.length > 2 ? geographicParts[2] : null,
+      savedAddress: savedIndex >= 0,
+    );
+  }
+
+  static bool _looksLikeAddressBlock(String value) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final postal = RegExp(r'\b\d{5}\b').hasMatch(normalized);
+    final streetSemantics = RegExp(
+      r'\b(calle|kalea|street|road|avenida|avenue|paseo|plaza|boulevard|bidea|errepidea)\b',
+      caseSensitive: false,
+      unicode: true,
+    ).hasMatch(normalized);
+    return postal && (streetSemantics || normalized.contains(','));
+  }
+
+  static final _savedAddressCue = RegExp(
+    r'\b(saved\s+address|address\s+saved|direcci[oó]n\s+guardada)\b',
+    caseSensitive: false,
+    unicode: true,
+  );
+}
+
+final class _PlaceDetails {
+  const _PlaceDetails({
+    this.name,
+    this.address,
+    this.locality,
+    this.region,
+    this.country,
+    this.savedAddress = false,
+  });
+
+  final String? name;
+  final String? address;
+  final String? locality;
+  final String? region;
+  final String? country;
+  final bool savedAddress;
 }
 
 abstract base class _TypedParser implements ScreenshotParser {
@@ -285,6 +390,7 @@ abstract base class _TypedParser implements ScreenshotParser {
     required String title,
     required Map<String, Object?> data,
     String? subtitle,
+    String? subtype,
     String fallbackTitle = 'Screenshot',
   }) {
     final now = clock.now();
@@ -293,7 +399,10 @@ abstract base class _TypedParser implements ScreenshotParser {
       id: ids.next(),
       screenshotId: context.screenshot.id,
       type: type,
-      subtype: context.classification?.subtype ?? '${type.value}.deterministic',
+      subtype:
+          subtype ??
+          context.classification?.subtype ??
+          '${type.value}.deterministic',
       title: cleanTitle,
       subtitle: subtitle,
       structuredData: {
@@ -354,11 +463,23 @@ abstract base class _TypedParser implements ScreenshotParser {
       .where((line) => line.length >= 2)
       .toList(growable: false);
 
+  List<String> weightedLines(ProcessingContext context) {
+    if (context.recognizedText.blocks.isEmpty) return lines(context);
+    return [
+      for (final block in context.recognizedText.blocks)
+        if (context.ocrAnalysis.signalFor(block.id).weight >= 0.5)
+          ...block.text
+              .split('\n')
+              .map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trim())
+              .where((line) => line.length >= 2),
+    ];
+  }
+
   String usefulTitle(
     ProcessingContext context, {
     List<String> ignored = const [],
   }) {
-    for (final line in lines(context)) {
+    for (final line in weightedLines(context)) {
       final lower = line.toLowerCase();
       if (line.length > 80 ||
           ignored.any(lower.contains) ||
@@ -367,11 +488,11 @@ abstract base class _TypedParser implements ScreenshotParser {
       }
       return line;
     }
-    return lines(context).firstOrNull ?? 'Screenshot';
+    return weightedLines(context).firstOrNull ?? 'Screenshot';
   }
 
   String eventTitle(ProcessingContext context) {
-    final all = lines(context);
+    final all = weightedLines(context);
     for (final line in all) {
       final lower = line.toLowerCase();
       if (_eventNoise.any(lower.contains) ||
@@ -486,10 +607,17 @@ abstract base class _TypedParser implements ScreenshotParser {
     ProcessingContext context,
     Object? value,
   ) {
-    final text = value?.toString().toLowerCase() ?? '';
+    String comparable(Object? raw) => raw.toString().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9áéíóúüñ]+', unicode: true),
+      '',
+    );
+
+    final text = comparable(value);
     final evidence = [
       for (final block in context.recognizedText.blocks)
-        if (block.id.isNotEmpty && block.text.toLowerCase().contains(text))
+        if (block.id.isNotEmpty &&
+            text.isNotEmpty &&
+            comparable(block.text).contains(text))
           block.id,
     ];
     return {

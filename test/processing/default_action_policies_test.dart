@@ -11,10 +11,18 @@ void main() {
     final proposals = await const EventActionPolicy().propose(
       objectFixture(
         type: ExtractedObjectType.event,
-        structuredData: const {
+        structuredData: {
+          'date': '2030-08-22',
           'startsAt': '2030-08-22T21:00:00Z',
           'venue': 'Wembley Stadium',
+          'city': 'London',
           'time': '21:00',
+          '_fieldMetadata': _trustedMetadata(const [
+            'title',
+            'date',
+            'venue',
+            'city',
+          ]),
         },
       ),
     );
@@ -31,7 +39,12 @@ void main() {
 
   test('coupon actions only include copy when no expiry exists', () async {
     final proposals = await const CouponActionPolicy().propose(
-      objectFixture(structuredData: const {'couponCode': 'SAVE20'}),
+      objectFixture(
+        structuredData: {
+          'couponCode': 'SAVE20',
+          '_fieldMetadata': _trustedMetadata(const ['couponCode']),
+        },
+      ),
     );
 
     expect(_types(proposals), [SuggestedActionType.copy]);
@@ -43,7 +56,10 @@ void main() {
       final proposals = await const OrderActionPolicy().propose(
         objectFixture(
           type: ExtractedObjectType.order,
-          structuredData: const {'trackingNumber': '1Z999AA10123456784'},
+          structuredData: {
+            'trackingNumber': '1Z999AA10123456784',
+            '_fieldMetadata': _trustedMetadata(const ['trackingNumber']),
+          },
         ),
       );
 
@@ -71,7 +87,10 @@ void main() {
     final place = await const PlaceActionPolicy().propose(
       objectFixture(
         type: ExtractedObjectType.place,
-        structuredData: const {'mapsQuery': 'La Viña, San Sebastián'},
+        structuredData: {
+          'address': '31 de Agosto Kalea, 3, San Sebastián',
+          '_fieldMetadata': _trustedMetadata(const ['address']),
+        },
       ),
     );
 
@@ -92,3 +111,12 @@ void main() {
 
 List<SuggestedActionType> _types(List<ActionProposal> proposals) =>
     proposals.map((proposal) => proposal.type).toList(growable: false);
+
+Map<String, Object?> _trustedMetadata(List<String> fields) => {
+  for (final field in fields)
+    field: {
+      'source': 'machineLocalAI',
+      'confidence': 0.9,
+      'evidence': const ['B01'],
+    },
+};
