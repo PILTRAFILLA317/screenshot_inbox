@@ -12,10 +12,12 @@ import 'package:screenshot_inbox/domain/extraction/extracted_object.dart'
 import 'package:screenshot_inbox/domain/extraction/extraction_repositories.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart' as domain;
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle_event_repository.dart';
+import 'package:screenshot_inbox/domain/inbox/inbox_item.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart' as domain;
 import 'package:screenshot_inbox/domain/screenshots/screenshot_repository.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot_type.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
+import 'package:screenshot_inbox/processing/priority/priority_engine.dart';
 
 final class DriftScreenshotRepository implements ScreenshotRepository {
   DriftScreenshotRepository(this._db);
@@ -41,6 +43,46 @@ final class DriftScreenshotRepository implements ScreenshotRepository {
     )..where((table) => table.assetId.equals(assetId))).getSingleOrNull();
     return row == null ? null : _screenshotFromRow(row);
   }
+
+  @override
+  Future<Map<String, domain.Screenshot>> findByAssetIds(
+    Iterable<String> assetIds,
+  ) async {
+    final ids = assetIds.toSet();
+    if (ids.isEmpty) return const {};
+    final rows = await (_db.select(
+      _db.screenshots,
+    )..where((table) => table.assetId.isIn(ids))).get();
+    return {for (final row in rows) row.assetId: _screenshotFromRow(row)};
+  }
+
+  @override
+  Future<List<domain.Screenshot>> findAll() async =>
+      (await _db.select(_db.screenshots).get())
+          .map(_screenshotFromRow)
+          .toList(growable: false);
+
+  @override
+  Future<List<domain.Screenshot>> findByProcessingStatuses(
+    Set<domain.ScreenshotProcessingStatus> statuses,
+  ) async {
+    if (statuses.isEmpty) return const [];
+    final query = _db.select(_db.screenshots)
+      ..where(
+        (table) =>
+            table.processingStatus.isIn(statuses.map((status) => status.name)),
+      )
+      ..orderBy([(table) => OrderingTerm.desc(table.createdAt)]);
+    return (await query.get()).map(_screenshotFromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> setLifecycleState(String id, domain.LifecycleState state) =>
+      (_db.update(
+        _db.screenshots,
+      )..where((table) => table.id.equals(id))).write(
+        ScreenshotsCompanion(currentLifecycleState: Value(state.name)),
+      );
 
   @override
   Stream<List<domain.Screenshot>> watchRecent({int limit = 20}) {
@@ -108,6 +150,9 @@ final class DriftExtractedObjectRepository
   final AppDatabase _db;
 
   @override
+  Future<void> save(domain.ExtractedObject object) => _saveObject(_db, object);
+
+  @override
   Future<void> replaceForScreenshot(
     String screenshotId,
     List<domain.ExtractedObject> objects,
@@ -120,25 +165,27 @@ final class DriftExtractedObjectRepository
     final rows = await (_db.select(
       _db.extractedObjects,
     )..where((table) => table.screenshotId.equals(screenshotId))).get();
-    return rows
-        .map(
-          (row) => domain.ExtractedObject(
-            id: row.id,
-            screenshotId: row.screenshotId,
-            type: domain.ExtractedObjectType(row.type),
-            subtype: row.subtype,
-            title: row.title,
-            subtitle: row.subtitle,
-            structuredData: _decodeJson(row.structuredDataJson),
-            confidence: row.confidence,
-            saved: row.saved,
-            handled: row.handled,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-          ),
-        )
-        .toList(growable: false);
+    return rows.map(_objectFromRow).toList(growable: false);
   }
+
+  @override
+  Future<void> setSaved(String id, bool saved, DateTime at) =>
+      (_db.update(
+        _db.extractedObjects,
+      )..where((table) => table.id.equals(id))).write(
+        ExtractedObjectsCompanion(saved: Value(saved), updatedAt: Value(at)),
+      );
+
+  @override
+  Future<void> setHandled(String id, bool handled, DateTime at) =>
+      (_db.update(
+        _db.extractedObjects,
+      )..where((table) => table.id.equals(id))).write(
+        ExtractedObjectsCompanion(
+          handled: Value(handled),
+          updatedAt: Value(at),
+        ),
+      );
 }
 
 final class DriftSuggestedActionRepository
@@ -160,21 +207,167 @@ final class DriftSuggestedActionRepository
     final rows = await (_db.select(
       _db.suggestedActions,
     )..where((table) => table.screenshotId.equals(screenshotId))).get();
-    return rows
-        .map(
-          (row) => domain.SuggestedAction(
-            id: row.id,
-            screenshotId: row.screenshotId,
-            extractedObjectId: row.extractedObjectId,
-            type: domain.SuggestedActionType(row.type),
-            payload: _decodeJson(row.payloadJson),
-            confidence: row.confidence,
-            status: domain.SuggestedActionStatus.values.byName(row.status),
-            createdAt: row.createdAt,
-            completedAt: row.completedAt,
-            dismissedAt: row.dismissedAt,
-          ),
-        )
+    return rows.map(_actionFromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> save(domain.SuggestedAction action) => _saveAction(_db, action);
+}
+
+final class DriftInboxRepository implements InboxRepository {
+  DriftInboxRepository(this._db, this._priority);
+
+  final AppDatabase _db;
+  final PriorityEngine _priority;
+
+  @override
+  Stream<List<InboxItem>> watch(InboxQuery query) => _db
+      .customSelect(
+        'SELECT 1 AS revision',
+        readsFrom: {
+          _db.screenshots,
+          _db.entities,
+          _db.extractedObjects,
+          _db.suggestedActions,
+          _db.lifecycleEvents,
+        },
+      )
+      .watch()
+      .asyncMap((_) => find(query));
+
+  @override
+  Future<List<InboxItem>> find(InboxQuery query) async {
+    final screenshotQuery = _db.select(_db.screenshots);
+    if (query.screenshotId != null) {
+      screenshotQuery.where((table) => table.id.equals(query.screenshotId!));
+    }
+    if (query.filter == InboxFilter.cleanup) {
+      screenshotQuery.where(
+        (table) => table.currentLifecycleState.equals(
+          domain.LifecycleState.cleanupCandidate.name,
+        ),
+      );
+    } else if (query.filter != InboxFilter.one &&
+        query.filter != InboxFilter.library) {
+      screenshotQuery.where(
+        (table) => table.currentLifecycleState.isNotIn([
+          domain.LifecycleState.deleted.name,
+        ]),
+      );
+    }
+    screenshotQuery.orderBy([(table) => OrderingTerm.desc(table.createdAt)]);
+    if (query.filter == InboxFilter.recent && query.limit != null) {
+      screenshotQuery.limit(query.limit!);
+    }
+    final screenshots = (await screenshotQuery.get())
+        .map(_screenshotFromRow)
+        .toList(growable: false);
+    if (screenshots.isEmpty) return const [];
+
+    final screenshotIds = screenshots.map((item) => item.id).toSet();
+    final objectRows = await (_db.select(
+      _db.extractedObjects,
+    )..where((table) => table.screenshotId.isIn(screenshotIds))).get();
+    final actionRows =
+        await (_db.select(_db.suggestedActions)
+              ..where((table) => table.screenshotId.isIn(screenshotIds))
+              ..orderBy([(table) => OrderingTerm.desc(table.confidence)]))
+            .get();
+    final entityRows = await (_db.select(
+      _db.entities,
+    )..where((table) => table.screenshotId.isIn(screenshotIds))).get();
+    final eventRows =
+        await (_db.select(_db.lifecycleEvents)
+              ..where((table) => table.screenshotId.isIn(screenshotIds))
+              ..orderBy([(table) => OrderingTerm.desc(table.timestamp)]))
+            .get();
+
+    final objects = <String, domain.ExtractedObject>{};
+    for (final row in objectRows) {
+      final value = _objectFromRow(row);
+      final current = objects[row.screenshotId];
+      if (current == null || value.confidence > current.confidence) {
+        objects[row.screenshotId] = value;
+      }
+    }
+    final actions = <String, List<domain.SuggestedAction>>{};
+    for (final row in actionRows) {
+      actions.putIfAbsent(row.screenshotId, () => []).add(_actionFromRow(row));
+    }
+    final entities = <String, List<domain.ExtractedEntity>>{};
+    for (final row in entityRows) {
+      entities.putIfAbsent(row.screenshotId, () => []).add(_entityFromRow(row));
+    }
+    final reasons = <String, String>{};
+    for (final row in eventRows) {
+      reasons.putIfAbsent(row.screenshotId, () => row.reason);
+    }
+
+    var items = [
+      for (final screenshot in screenshots)
+        InboxItem(
+          screenshot: screenshot,
+          object: objects[screenshot.id],
+          actions: actions[screenshot.id] ?? const [],
+          entities: entities[screenshot.id] ?? const [],
+          lifecycleReason: reasons[screenshot.id],
+        ),
+    ];
+    items = switch (query.filter) {
+      InboxFilter.needAction =>
+        items.where((item) => item.needsAction).toList(),
+      InboxFilter.expiring =>
+        items
+            .where(
+              (item) =>
+                  item.expiryDate != null &&
+                  !item.isHandled &&
+                  item.screenshot.currentLifecycleState !=
+                      domain.LifecycleState.cleanupCandidate,
+            )
+            .toList(),
+      InboxFilter.library => items.where((item) => item.isSaved).toList(),
+      InboxFilter.search => _search(items, query.search ?? ''),
+      _ => items,
+    };
+
+    final now = DateTime.now().toUtc();
+    if (query.filter == InboxFilter.needAction ||
+        query.filter == InboxFilter.search) {
+      items = _priority.rank(items, now);
+    } else if (query.filter == InboxFilter.expiring) {
+      items.sort(
+        (a, b) => (a.expiryDate ?? DateTime(9999)).compareTo(
+          b.expiryDate ?? DateTime(9999),
+        ),
+      );
+    } else if (query.filter == InboxFilter.library) {
+      items.sort(
+        (a, b) => (b.object?.updatedAt ?? b.screenshot.createdAt).compareTo(
+          a.object?.updatedAt ?? a.screenshot.createdAt,
+        ),
+      );
+    }
+    if (query.limit case final int limit when items.length > limit) {
+      items = items.take(limit).toList(growable: false);
+    }
+    return items;
+  }
+
+  static List<InboxItem> _search(List<InboxItem> items, String query) {
+    final needle = query.trim().toLowerCase();
+    if (needle.isEmpty) return const [];
+    return items
+        .where((item) {
+          final data = [
+            item.screenshot.ocrText ?? '',
+            item.title,
+            item.subtitle ?? '',
+            item.object?.structuredData.toString() ?? '',
+            ...item.entities.map((entity) => entity.normalizedValue),
+          ].join('\n').toLowerCase();
+          return data.contains(needle);
+        })
         .toList(growable: false);
   }
 }
@@ -228,9 +421,16 @@ final class DriftProcessingStore implements ProcessingStore {
 
   @override
   Future<void> persist(ProcessingResult result) => _db.transaction(() async {
+    final existingRows = await (_db.select(
+      _db.extractedObjects,
+    )..where((table) => table.screenshotId.equals(result.screenshot.id))).get();
+    final objects = _preserveUserConfirmed(
+      existingRows.map(_objectFromRow).toList(growable: false),
+      result.objects,
+    );
     await _saveScreenshot(_db, result.screenshot);
     await _replaceEntities(_db, result.screenshot.id, result.entities);
-    await _replaceObjects(_db, result.screenshot.id, result.objects);
+    await _replaceObjects(_db, result.screenshot.id, objects);
     await _replaceActions(_db, result.screenshot.id, result.actions);
     await _appendLifecycleEvents(_db, result.lifecycleEvents);
   });
@@ -248,6 +448,42 @@ final class DriftProcessingStore implements ProcessingStore {
     ),
   );
 }
+
+Future<void> _saveObject(AppDatabase db, domain.ExtractedObject object) => db
+    .into(db.extractedObjects)
+    .insertOnConflictUpdate(
+      ExtractedObjectsCompanion.insert(
+        id: object.id,
+        screenshotId: object.screenshotId,
+        type: object.type.value,
+        subtype: object.subtype,
+        title: object.title,
+        subtitle: Value(object.subtitle),
+        structuredDataJson: jsonEncode(object.structuredData),
+        confidence: object.confidence,
+        saved: Value(object.saved),
+        handled: Value(object.handled),
+        createdAt: object.createdAt,
+        updatedAt: object.updatedAt,
+      ),
+    );
+
+Future<void> _saveAction(AppDatabase db, domain.SuggestedAction action) => db
+    .into(db.suggestedActions)
+    .insertOnConflictUpdate(
+      SuggestedActionsCompanion.insert(
+        id: action.id,
+        screenshotId: action.screenshotId,
+        extractedObjectId: Value(action.extractedObjectId),
+        type: action.type.value,
+        payloadJson: jsonEncode(action.payload),
+        confidence: action.confidence,
+        status: action.status.name,
+        createdAt: action.createdAt,
+        completedAt: Value(action.completedAt),
+        dismissedAt: Value(action.dismissedAt),
+      ),
+    );
 
 Future<void> _saveScreenshot(AppDatabase db, domain.Screenshot screenshot) => db
     .into(db.screenshots)
@@ -400,4 +636,73 @@ JsonMap _decodeJson(String source) {
     throw const FormatException('Expected a JSON object.');
   }
   return decoded;
+}
+
+domain.ExtractedEntity _entityFromRow(EntityRow row) => domain.ExtractedEntity(
+  id: row.id,
+  screenshotId: row.screenshotId,
+  type: domain.EntityType(row.type),
+  rawValue: row.rawValue,
+  normalizedValue: row.normalizedValue,
+  confidence: row.confidence,
+  metadata: _decodeJson(row.metadataJson),
+);
+
+domain.ExtractedObject _objectFromRow(ExtractedObjectRow row) =>
+    domain.ExtractedObject(
+      id: row.id,
+      screenshotId: row.screenshotId,
+      type: domain.ExtractedObjectType(row.type),
+      subtype: row.subtype,
+      title: row.title,
+      subtitle: row.subtitle,
+      structuredData: _decodeJson(row.structuredDataJson),
+      confidence: row.confidence,
+      saved: row.saved,
+      handled: row.handled,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+
+domain.SuggestedAction _actionFromRow(SuggestedActionRow row) =>
+    domain.SuggestedAction(
+      id: row.id,
+      screenshotId: row.screenshotId,
+      extractedObjectId: row.extractedObjectId,
+      type: domain.SuggestedActionType(row.type),
+      payload: _decodeJson(row.payloadJson),
+      confidence: row.confidence,
+      status: domain.SuggestedActionStatus.values.byName(row.status),
+      createdAt: row.createdAt,
+      completedAt: row.completedAt,
+      dismissedAt: row.dismissedAt,
+    );
+
+List<domain.ExtractedObject> _preserveUserConfirmed(
+  List<domain.ExtractedObject> existing,
+  List<domain.ExtractedObject> generated,
+) {
+  if (existing.isEmpty || generated.isEmpty) return generated;
+  final old = existing.first;
+  final fields = old.structuredData['_userConfirmedFields'];
+  final confirmed = fields is List
+      ? fields.whereType<String>().toSet()
+      : const <String>{};
+  if (confirmed.isEmpty && !old.saved && !old.handled) return generated;
+  final next = generated.first;
+  final data = <String, Object?>{...next.structuredData};
+  if (confirmed.contains('importantDate')) {
+    data['importantDate'] = old.structuredData['importantDate'];
+  }
+  data['_userConfirmedFields'] = confirmed.toList(growable: false);
+  return [
+    next.copyWith(
+      type: confirmed.contains('type') ? old.type : next.type,
+      title: confirmed.contains('title') ? old.title : next.title,
+      structuredData: data,
+      saved: old.saved,
+      handled: old.handled,
+    ),
+    ...generated.skip(1),
+  ];
 }

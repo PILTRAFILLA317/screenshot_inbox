@@ -11,10 +11,16 @@ abstract interface class EntityRepository {
 }
 
 abstract interface class ExtractedObjectRepository {
+  Future<void> save(ExtractedObject object);
+
   Future<void> replaceForScreenshot(
     String screenshotId,
     List<ExtractedObject> objects,
   );
 
   Future<List<ExtractedObject>> findForScreenshot(String screenshotId);
+
+  Future<void> setSaved(String id, bool saved, DateTime at);
+
+  Future<void> setHandled(String id, bool handled, DateTime at);
 }

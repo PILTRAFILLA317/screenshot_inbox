@@ -9,7 +9,7 @@ final class ProcessingContext {
   const ProcessingContext({
     required this.screenshot,
     required this.imageBytes,
-    this.ocrText = '',
+    this.recognizedText = const RecognizedText(fullText: ''),
     this.barcodes = const [],
     this.entities = const [],
     this.classification,
@@ -17,13 +17,14 @@ final class ProcessingContext {
 
   final Screenshot screenshot;
   final Uint8List imageBytes;
-  final String ocrText;
+  final RecognizedText recognizedText;
+  String get ocrText => recognizedText.fullText;
   final List<RecognizedBarcode> barcodes;
   final List<ExtractedEntity> entities;
   final ClassificationResult? classification;
 
   ProcessingContext copyWith({
-    String? ocrText,
+    RecognizedText? recognizedText,
     List<RecognizedBarcode>? barcodes,
     List<ExtractedEntity>? entities,
     ClassificationResult? classification,
@@ -31,7 +32,7 @@ final class ProcessingContext {
     return ProcessingContext(
       screenshot: screenshot,
       imageBytes: imageBytes,
-      ocrText: ocrText ?? this.ocrText,
+      recognizedText: recognizedText ?? this.recognizedText,
       barcodes: barcodes ?? this.barcodes,
       entities: entities ?? this.entities,
       classification: classification ?? this.classification,

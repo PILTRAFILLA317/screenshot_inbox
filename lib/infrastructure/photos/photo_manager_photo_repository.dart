@@ -12,6 +12,16 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
   static const _processingMaxDimension = 2400;
 
   @override
+  Future<PhotoPermissionState> currentPermission() async {
+    final permission = await PhotoManager.getPermissionState(
+      requestOption: const PermissionRequestOption(
+        iosAccessLevel: IosAccessLevel.readWrite,
+      ),
+    );
+    return _permissionStates[permission] ?? PhotoPermissionState.denied;
+  }
+
+  @override
   Future<PhotoPermissionState> requestPermission() async {
     final permission = await PhotoManager.requestPermissionExtend(
       requestOption: const PermissionRequestOption(
@@ -20,6 +30,9 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
     );
     return _permissionStates[permission] ?? PhotoPermissionState.denied;
   }
+
+  @override
+  Future<void> openSettings() => PhotoManager.openSetting();
 
   @override
   Future<List<PhotoAsset>> getScreenshots({DateTime? after, int? limit}) async {
@@ -77,10 +90,59 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
   }
 
   @override
+  Stream<List<PhotoAsset>> getScreenshotBatches({int batchSize = 50}) async* {
+    if (batchSize <= 0) return;
+    final permission = await currentPermission();
+    if (!permission.canRead) return;
+
+    final filter = FilterOptionGroup(
+      createTimeCond: DateTimeCond(
+        min: DateTime.fromMillisecondsSinceEpoch(0),
+        max: DateTime.now(),
+      ),
+      orders: const [OrderOption(type: OrderOptionType.createDate, asc: false)],
+    );
+    final paths = await _screenshotPaths(filter);
+    final emitted = <String>{};
+    var page = 0;
+    while (true) {
+      final pageAssets = <AssetEntity>[];
+      var anyPathHasMore = false;
+      for (final path in paths) {
+        final assets = await path.getAssetListPaged(
+          page: page,
+          size: batchSize,
+          type: RequestType.image,
+        );
+        if (assets.isNotEmpty) anyPathHasMore = true;
+        for (final asset in assets) {
+          if (emitted.add(asset.id)) pageAssets.add(asset);
+        }
+      }
+      if (!anyPathHasMore) break;
+      pageAssets.sort((a, b) => b.createDateTime.compareTo(a.createDateTime));
+      for (var start = 0; start < pageAssets.length; start += batchSize) {
+        final end = math.min(start + batchSize, pageAssets.length);
+        yield [
+          for (final asset in pageAssets.sublist(start, end))
+            PhotoAsset(
+              id: asset.id,
+              createdAt: asset.createDateTime.toUtc(),
+              width: asset.width,
+              height: asset.height,
+            ),
+        ];
+      }
+      page++;
+    }
+  }
+
+  @override
   Future<Uint8List?> getThumbnail(String assetId) async {
     final asset = await AssetEntity.fromId(assetId);
-    return asset?.thumbnailDataWithSize(
-      const ThumbnailSize.square(512),
+    if (asset == null) return null;
+    return asset.thumbnailDataWithSize(
+      _boundedSize(asset.width, asset.height, maxDimension: 512),
       format: ThumbnailFormat.jpeg,
       quality: 88,
     );
@@ -99,9 +161,9 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
   }
 
   @override
-  Future<void> deleteAssets(List<String> assetIds) async {
-    if (assetIds.isEmpty) return;
-    await PhotoManager.editor.deleteWithIds(assetIds);
+  Future<Set<String>> deleteAssets(List<String> assetIds) async {
+    if (assetIds.isEmpty) return const {};
+    return (await PhotoManager.editor.deleteWithIds(assetIds)).toSet();
   }
 
   Future<List<AssetPathEntity>> _screenshotPaths(
@@ -137,12 +199,16 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
     return const [];
   }
 
-  static ThumbnailSize _boundedSize(int width, int height) {
+  static ThumbnailSize _boundedSize(
+    int width,
+    int height, {
+    int maxDimension = _processingMaxDimension,
+  }) {
     final largest = math.max(width, height);
-    if (largest <= _processingMaxDimension) {
+    if (largest <= maxDimension) {
       return ThumbnailSize(width, height);
     }
-    final scale = _processingMaxDimension / largest;
+    final scale = maxDimension / largest;
     return ThumbnailSize(
       math.max(1, (width * scale).round()),
       math.max(1, (height * scale).round()),

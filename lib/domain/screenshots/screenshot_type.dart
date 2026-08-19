@@ -11,6 +11,11 @@ final class ScreenshotType {
   static const product = ScreenshotType('product');
   static const place = ScreenshotType('place');
   static const order = ScreenshotType('order');
+  static const conversationTask = ScreenshotType('conversationTask');
+  static const reference = ScreenshotType('reference');
+  static const other = ScreenshotType('other');
+
+  /// Kept for rows created by the architecture prototype.
   static const conversation = ScreenshotType('conversation');
 
   @override

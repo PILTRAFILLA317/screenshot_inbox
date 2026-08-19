@@ -31,13 +31,22 @@ final class PhotoAsset {
 }
 
 abstract interface class PhotoRepository {
+  Future<PhotoPermissionState> currentPermission();
+
   Future<PhotoPermissionState> requestPermission();
 
+  Future<void> openSettings();
+
   Future<List<PhotoAsset>> getScreenshots({DateTime? after, int? limit});
+
+  /// Emits bounded metadata batches, newest batches first. Image bytes are
+  /// deliberately loaded through the separate thumbnail/processing methods.
+  Stream<List<PhotoAsset>> getScreenshotBatches({int batchSize = 50});
 
   Future<Uint8List?> getThumbnail(String assetId);
 
   Future<Uint8List?> getProcessingImage(String assetId);
 
-  Future<void> deleteAssets(List<String> assetIds);
+  /// Returns the asset IDs actually deleted after native confirmation.
+  Future<Set<String>> deleteAssets(List<String> assetIds);
 }

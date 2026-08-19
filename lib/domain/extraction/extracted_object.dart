@@ -10,7 +10,10 @@ final class ExtractedObjectType {
   static const product = ExtractedObjectType('product');
   static const order = ExtractedObjectType('order');
   static const coupon = ExtractedObjectType('coupon');
+  static const conversationTask = ExtractedObjectType('conversationTask');
   static const conversation = ExtractedObjectType('conversation');
+  static const reference = ExtractedObjectType('reference');
+  static const other = ExtractedObjectType('other');
   static const generic = ExtractedObjectType('generic');
 
   @override
@@ -50,4 +53,29 @@ final class ExtractedObject {
   final bool handled;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  ExtractedObject copyWith({
+    ExtractedObjectType? type,
+    String? subtype,
+    String? title,
+    String? subtitle,
+    JsonMap? structuredData,
+    double? confidence,
+    bool? saved,
+    bool? handled,
+    DateTime? updatedAt,
+  }) => ExtractedObject(
+    id: id,
+    screenshotId: screenshotId,
+    type: type ?? this.type,
+    subtype: subtype ?? this.subtype,
+    title: title ?? this.title,
+    subtitle: subtitle ?? this.subtitle,
+    structuredData: structuredData ?? this.structuredData,
+    confidence: confidence ?? this.confidence,
+    saved: saved ?? this.saved,
+    handled: handled ?? this.handled,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }

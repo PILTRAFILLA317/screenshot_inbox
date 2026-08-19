@@ -29,13 +29,17 @@ final class _FakePhotoRepository implements PhotoRepository {
   int requestCount = 0;
 
   @override
+  Future<PhotoPermissionState> currentPermission() async => permission;
+
+  @override
   Future<PhotoPermissionState> requestPermission() async {
     requestCount++;
     return permission;
   }
 
   @override
-  Future<void> deleteAssets(List<String> assetIds) async {}
+  Future<Set<String>> deleteAssets(List<String> assetIds) async =>
+      assetIds.toSet();
 
   @override
   Future<Uint8List?> getProcessingImage(String assetId) async => null;
@@ -45,6 +49,13 @@ final class _FakePhotoRepository implements PhotoRepository {
     DateTime? after,
     int? limit,
   }) async => const [];
+
+  @override
+  Stream<List<PhotoAsset>> getScreenshotBatches({int batchSize = 50}) =>
+      const Stream.empty();
+
+  @override
+  Future<void> openSettings() async {}
 
   @override
   Future<Uint8List?> getThumbnail(String assetId) async => null;

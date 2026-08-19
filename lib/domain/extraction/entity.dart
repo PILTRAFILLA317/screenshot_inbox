@@ -20,6 +20,7 @@ final class EntityType {
   static const trackingCode = EntityType('trackingCode');
   static const couponCode = EntityType('couponCode');
   static const qr = EntityType('qr');
+  static const barcode = EntityType('barcode');
   static const other = EntityType('other');
 
   @override

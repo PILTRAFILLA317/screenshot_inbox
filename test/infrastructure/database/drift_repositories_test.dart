@@ -3,10 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:screenshot_inbox/core/database/app_database.dart';
 import 'package:screenshot_inbox/domain/actions/suggested_action.dart';
 import 'package:screenshot_inbox/domain/extraction/entity.dart';
+import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
+import 'package:screenshot_inbox/domain/inbox/inbox_item.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
 import 'package:screenshot_inbox/infrastructure/database/drift_repositories.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
+import 'package:screenshot_inbox/processing/priority/priority_engine.dart';
 
 import '../../support/fixtures.dart';
 
@@ -169,6 +172,77 @@ void main() {
       )..where((table) => table.id.equals(screenshot.id))).go();
 
       expect(await entities.findForScreenshot(screenshot.id), isEmpty);
+    },
+  );
+
+  test('inbox search covers OCR, object data and saved library', () async {
+    final screenshot = screenshotFixture(
+      status: ScreenshotProcessingStatus.processed,
+      lifecycleState: LifecycleState.actionable,
+    ).copyWith(ocrText: 'Restaurant in San Sebastián');
+    final object = objectFixture(
+      type: ExtractedObjectType.place,
+      structuredData: const {'name': 'La Viña', 'city': 'San Sebastián'},
+    ).copyWith(saved: true, title: 'La Viña');
+    await screenshots.save(screenshot);
+    await objects.replaceForScreenshot(screenshot.id, [object]);
+    final inbox = DriftInboxRepository(database, const PriorityEngine());
+
+    expect(await inbox.find(const InboxQuery.search('viña')), hasLength(1));
+    expect(
+      await inbox.find(const InboxQuery.search('san sebastián')),
+      hasLength(1),
+    );
+    expect(
+      (await inbox.find(const InboxQuery.library())).single.title,
+      'La Viña',
+    );
+  });
+
+  test(
+    'reprocessing preserves user-confirmed fields and saved state',
+    () async {
+      final screenshot = screenshotFixture(
+        status: ScreenshotProcessingStatus.processed,
+      );
+      final store = DriftProcessingStore(database);
+      final confirmed = objectFixture(
+        type: ExtractedObjectType.place,
+        structuredData: const {
+          'importantDate': '2026-09-01T09:00:00Z',
+          '_userConfirmedFields': ['title', 'type', 'importantDate'],
+        },
+      ).copyWith(title: 'User title', saved: true);
+      await store.persist(
+        ProcessingResult(
+          screenshot: screenshot,
+          entities: const [],
+          objects: [confirmed],
+          actions: const [],
+          lifecycleEvents: const [],
+        ),
+      );
+
+      final generated = objectFixture(
+        id: 'generated-object',
+        type: ExtractedObjectType.product,
+        structuredData: const {'productName': 'Generated title'},
+      ).copyWith(title: 'Generated title');
+      await store.persist(
+        ProcessingResult(
+          screenshot: screenshot,
+          entities: const [],
+          objects: [generated],
+          actions: const [],
+          lifecycleEvents: const [],
+        ),
+      );
+
+      final persisted = (await objects.findForScreenshot(screenshot.id)).single;
+      expect(persisted.title, 'User title');
+      expect(persisted.type, ExtractedObjectType.place);
+      expect(persisted.structuredData['importantDate'], '2026-09-01T09:00:00Z');
+      expect(persisted.saved, isTrue);
     },
   );
 }

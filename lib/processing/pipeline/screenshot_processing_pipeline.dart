@@ -1,17 +1,24 @@
 import 'package:screenshot_inbox/core/errors/app_exception.dart';
+import 'package:screenshot_inbox/core/debug/local_debug_log.dart';
 import 'package:screenshot_inbox/core/platform/clock.dart';
 import 'package:screenshot_inbox/core/utils/id_generator.dart';
+import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
+import 'package:screenshot_inbox/domain/extraction/extraction_repositories.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
+import 'package:screenshot_inbox/domain/screenshots/screenshot_type.dart';
 import 'package:screenshot_inbox/processing/actions/action_engine.dart';
 import 'package:screenshot_inbox/processing/classification/classification.dart';
 import 'package:screenshot_inbox/processing/entities/entity_extractor.dart';
+import 'package:screenshot_inbox/processing/intelligence/intelligence_enricher.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_engine.dart';
 import 'package:screenshot_inbox/processing/ocr/recognition_services.dart';
 import 'package:screenshot_inbox/processing/parsers/parser_registry.dart';
+import 'package:screenshot_inbox/processing/parsers/screenshot_parser.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_context.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
+import 'package:screenshot_inbox/processing/pipeline/processing_version.dart';
 
 final class ScreenshotProcessingPipeline {
   ScreenshotProcessingPipeline({
@@ -26,6 +33,8 @@ final class ScreenshotProcessingPipeline {
     required this.store,
     required this.clock,
     required this.ids,
+    this.intelligence,
+    this.existingObjects,
   });
 
   final PhotoRepository photos;
@@ -39,8 +48,11 @@ final class ScreenshotProcessingPipeline {
   final ProcessingStore store;
   final Clock clock;
   final IdGenerator ids;
+  final IntelligenceEnricher? intelligence;
+  final ExtractedObjectRepository? existingObjects;
 
   Future<ProcessingResult> process(Screenshot screenshot) async {
+    final totalWatch = Stopwatch()..start();
     final startedAt = clock.now();
     await store.markProcessing(screenshot, startedAt);
 
@@ -56,20 +68,56 @@ final class ScreenshotProcessingPipeline {
         screenshot: screenshot,
         imageBytes: imageBytes,
       );
-      final recognizedText = await textRecognition.recognize(imageBytes);
-      context = context.copyWith(ocrText: recognizedText.text);
+      final ocrWatch = Stopwatch()..start();
+      final recognizedText = (await textRecognition.recognize(imageBytes))
+          .normalizedFor(width: screenshot.width, height: screenshot.height);
+      ocrWatch.stop();
+      context = context.copyWith(recognizedText: recognizedText);
       final barcodes = await barcodeRecognition.recognize(imageBytes);
       context = context.copyWith(barcodes: barcodes);
+      final deterministicWatch = Stopwatch()..start();
       final entities = await entityExtractor.extract(context);
       context = context.copyWith(entities: entities);
       final classification = await classifier.classify(context);
       context = context.copyWith(classification: classification);
-      final parseResult = await parsers.parse(context);
-      final suggestedActions = await actions.generate(
-        screenshot.id,
-        parseResult.objects,
+      final parser = parsers.resolve(context);
+      final parseResult = parser == null
+          ? const ParseResult.empty()
+          : await parser.parse(context);
+      deterministicWatch.stop();
+      final intelligenceWatch = Stopwatch()..start();
+      final previous = existingObjects == null
+          ? const <ExtractedObject>[]
+          : await existingObjects!.findForScreenshot(screenshot.id);
+      final enrichment = intelligence == null
+          ? IntelligenceEnrichmentResult(
+              objects: parseResult.objects,
+              diagnostics: const {
+                'skipped': true,
+                'reason': 'no intelligence stage configured',
+              },
+            )
+          : await intelligence!.enrich(
+              context: context,
+              deterministic: parseResult,
+              existingObjects: previous,
+            );
+      LocalDebugLog.event(
+        'processing.interpretation',
+        metadata: {
+          'screenshotId': screenshot.id,
+          'parser': parser?.id,
+          'provider': enrichment.diagnostics['provider'],
+          'availability': enrichment.diagnostics['availability'],
+          'reason': enrichment.diagnostics['reason'],
+        },
       );
-      final lifecycleEvaluations = lifecycle.evaluate(parseResult.objects);
+      intelligenceWatch.stop();
+      final validationWatch = Stopwatch()..start();
+      final objects = enrichment.objects;
+      validationWatch.stop();
+      final suggestedActions = await actions.generate(screenshot.id, objects);
+      final lifecycleEvaluations = lifecycle.evaluate(objects);
       final evaluations = lifecycleEvaluations.isEmpty
           ? const [
               LifecycleEvaluation(
@@ -85,14 +133,36 @@ final class ScreenshotProcessingPipeline {
         suggestedActions.isNotEmpty,
       );
       final finishedAt = clock.now();
+      totalWatch.stop();
+      final finalObjects = _withDebugDiagnostics(
+        objects: objects,
+        context: context,
+        parserId: parser?.id,
+        deterministicObjects: parseResult.objects,
+        intelligence: enrichment.diagnostics,
+        actions: suggestedActions,
+        evaluations: evaluations,
+        timings: {
+          'ocrMs': ocrWatch.elapsedMilliseconds,
+          'deterministicMs': deterministicWatch.elapsedMilliseconds,
+          'intelligenceMs': intelligenceWatch.elapsedMilliseconds,
+          'validationMs': validationWatch.elapsedMilliseconds,
+          'totalMs': totalWatch.elapsedMilliseconds,
+        },
+      );
+      final primaryObject = finalObjects.firstOrNull;
       final processedScreenshot = screenshot.copyWith(
         processingStatus: ScreenshotProcessingStatus.processed,
         ocrText: recognizedText.text,
-        primaryType: classification.type,
-        primarySubtype: classification.subtype,
-        classificationConfidence: classification.confidence,
+        primaryType: primaryObject == null
+            ? classification.type
+            : ScreenshotType(primaryObject.type.value),
+        primarySubtype: primaryObject?.subtype ?? classification.subtype,
+        classificationConfidence:
+            primaryObject?.confidence ?? classification.confidence,
         currentLifecycleState: lifecycleState,
         lastProcessedAt: finishedAt,
+        processingVersion: ProcessingVersion.current,
       );
       final events = [
         for (final evaluation in evaluations)
@@ -108,13 +178,19 @@ final class ScreenshotProcessingPipeline {
       final result = ProcessingResult(
         screenshot: processedScreenshot,
         entities: entities,
-        objects: parseResult.objects,
+        objects: finalObjects,
         actions: suggestedActions,
         lifecycleEvents: events,
       );
       await store.persist(result);
       return result;
     } catch (error, stackTrace) {
+      LocalDebugLog.event(
+        'processing.failed',
+        metadata: {'screenshotId': screenshot.id},
+        error: error,
+        stackTrace: stackTrace,
+      );
       await store.markFailed(screenshot, clock.now(), error);
       Error.throwWithStackTrace(
         ScreenshotProcessingException(
@@ -126,19 +202,121 @@ final class ScreenshotProcessingPipeline {
     }
   }
 
+  static List<ExtractedObject> _withDebugDiagnostics({
+    required List<ExtractedObject> objects,
+    required ProcessingContext context,
+    required String? parserId,
+    required List<ExtractedObject> deterministicObjects,
+    required Map<String, Object?> intelligence,
+    required List<dynamic> actions,
+    required List<LifecycleEvaluation> evaluations,
+    required Map<String, Object?> timings,
+  }) {
+    const release = bool.fromEnvironment('dart.vm.product');
+    if (release) return objects;
+    final debug = <String, Object?>{
+      'ocrBlocks': [
+        for (final block in context.recognizedText.blocks)
+          {
+            'id': block.id,
+            'text': block.text,
+            'bounds': block.boundingBox?.toJson(),
+            'lines': [
+              for (final line in block.lines)
+                {
+                  'id': line.id,
+                  'text': line.text,
+                  'bounds': line.boundingBox?.toJson(),
+                  'confidence': line.confidence,
+                },
+            ],
+          },
+      ],
+      'deterministicEntities': [
+        for (final entity in context.entities)
+          {
+            'id': entity.id,
+            'type': entity.type.value,
+            'rawValue': entity.rawValue,
+            'normalizedValue': entity.normalizedValue,
+            'confidence': entity.confidence,
+            'metadata': entity.metadata,
+          },
+      ],
+      'classification': {
+        'type': context.classification?.type.value,
+        'subtype': context.classification?.subtype,
+        'confidence': context.classification?.confidence,
+        'reasons': context.classification?.reasons,
+      },
+      'deterministicParser': {
+        'id': parserId,
+        'objects': [
+          for (final object in deterministicObjects)
+            {
+              'type': object.type.value,
+              'subtype': object.subtype,
+              'title': object.title,
+              'fields': object.structuredData,
+            },
+        ],
+      },
+      'localIntelligence': intelligence,
+      'actions': [
+        for (final action in actions)
+          {
+            'type': action.type.value,
+            'confidence': action.confidence,
+            'payload': action.payload,
+          },
+      ],
+      'lifecycle': [
+        for (final evaluation in evaluations)
+          {
+            'state': evaluation.state.name,
+            'reason': evaluation.reason,
+            'metadata': evaluation.metadata,
+          },
+      ],
+      'timings': timings,
+    };
+    return [
+      for (final object in objects)
+        object.copyWith(
+          structuredData: {
+            ...object.structuredData,
+            '_debug': {
+              ...debug,
+              'finalObject': {
+                'type': object.type.value,
+                'subtype': object.subtype,
+                'title': object.title,
+                'subtitle': object.subtitle,
+                'confidence': object.confidence,
+                'fields': object.structuredData,
+              },
+            },
+          },
+        ),
+    ];
+  }
+
   static LifecycleState _selectLifecycleState(
     List<LifecycleEvaluation> evaluations,
     bool hasActions,
   ) {
     if (evaluations.isEmpty) return LifecycleState.understood;
     const rank = <LifecycleState, int>{
+      LifecycleState.newItem: 0,
       LifecycleState.understood: 0,
       LifecycleState.keep: 1,
-      LifecycleState.upcoming: 2,
-      LifecycleState.expiring: 3,
-      LifecycleState.expired: 4,
-      LifecycleState.cleanupCandidate: 5,
-      LifecycleState.deleted: 6,
+      LifecycleState.handled: 2,
+      LifecycleState.actionable: 3,
+      LifecycleState.upcoming: 4,
+      LifecycleState.expiring: 5,
+      LifecycleState.expired: 6,
+      LifecycleState.cleanupCandidate: 7,
+      LifecycleState.deleted: 8,
     };
     final state = evaluations
         .map((evaluation) => evaluation.state)

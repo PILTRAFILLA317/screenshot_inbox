@@ -20,4 +20,11 @@ final class OnboardingController
     state = permission;
     return permission.requireValue;
   }
+
+  Future<void> openSettings() => _photos.openSettings();
+
+  Future<void> checkPermission() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(_photos.currentPermission);
+  }
 }

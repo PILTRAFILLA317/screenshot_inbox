@@ -7,4 +7,6 @@ abstract interface class SuggestedActionRepository {
   );
 
   Future<List<SuggestedAction>> findForScreenshot(String screenshotId);
+
+  Future<void> save(SuggestedAction action);
 }

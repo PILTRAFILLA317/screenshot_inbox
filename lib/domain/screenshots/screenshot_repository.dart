@@ -8,6 +8,16 @@ abstract interface class ScreenshotRepository {
 
   Future<Screenshot?> findByAssetId(String assetId);
 
+  Future<Map<String, Screenshot>> findByAssetIds(Iterable<String> assetIds);
+
+  Future<List<Screenshot>> findAll();
+
+  Future<List<Screenshot>> findByProcessingStatuses(
+    Set<ScreenshotProcessingStatus> statuses,
+  );
+
+  Future<void> setLifecycleState(String id, LifecycleState state);
+
   Stream<List<Screenshot>> watchRecent({int limit = 20});
 
   Future<int> countByLifecycleStates(Set<LifecycleState> states);

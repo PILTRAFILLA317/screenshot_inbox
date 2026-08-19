@@ -13,6 +13,7 @@ import 'package:screenshot_inbox/processing/lifecycle/default_lifecycle_policies
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_engine.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_policy_registry.dart';
 import 'package:screenshot_inbox/processing/ocr/recognition_services.dart';
+import 'package:screenshot_inbox/processing/parsers/default_screenshot_parsers.dart';
 import 'package:screenshot_inbox/processing/parsers/generic_screenshot_parser.dart';
 import 'package:screenshot_inbox/processing/parsers/parser_registry.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_context.dart';
@@ -20,6 +21,7 @@ import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
 import 'package:screenshot_inbox/processing/pipeline/screenshot_processing_pipeline.dart';
 
 import '../support/fixtures.dart';
+import '../support/text_corpus.dart';
 
 void main() {
   test('processes a simulated screenshot through every stage', () async {
@@ -58,6 +60,7 @@ void main() {
       result.screenshot.processingStatus,
       ScreenshotProcessingStatus.processed,
     );
+    expect(result.screenshot.processingVersion, 2);
     expect(result.screenshot.primaryType, ScreenshotType.event);
     expect(result.screenshot.currentLifecycleState.name, 'actionable');
     expect(
@@ -65,14 +68,64 @@ void main() {
       containsAll(['url', 'date', 'qr']),
     );
     expect(result.objects.single.subtype, 'event.generic');
-    expect(result.actions, hasLength(2));
+    expect(result.actions, hasLength(1));
     expect(result.lifecycleEvents, hasLength(1));
+  });
+
+  test('runs the real deterministic coupon stack end to end', () async {
+    final clock = FixedClock(DateTime.utc(2026, 8, 21, 12));
+    final ids = SequenceIdGenerator();
+    final store = _FakeProcessingStore();
+    final pipeline = ScreenshotProcessingPipeline(
+      photos: _FakePhotoRepository(),
+      textRecognition: _FakeTextRecognition(couponEnglish),
+      barcodeRecognition: _FakeBarcodeRecognition(),
+      entityExtractor: RegexEntityExtractor(ids),
+      classifier: RuleBasedScreenshotClassifier(),
+      parsers: ParserRegistry([
+        CouponParser(ids, clock),
+        GenericScreenshotParser(ids, clock),
+      ]),
+      actions: ActionEngine(
+        ActionPolicyRegistry([
+          CouponActionPolicy(clock),
+          const SaveObjectActionPolicy(),
+        ]),
+        ids,
+        clock,
+      ),
+      lifecycle: LifecycleEngine(
+        LifecyclePolicyRegistry(const [
+          CouponLifecyclePolicy(),
+          DefaultLifecyclePolicy(),
+        ]),
+        clock,
+      ),
+      store: store,
+      clock: clock,
+      ids: ids,
+    );
+
+    final result = await pipeline.process(screenshotFixture());
+
+    expect(result.screenshot.primaryType, ScreenshotType.coupon);
+    expect(result.screenshot.currentLifecycleState.name, 'expiring');
+    expect(result.objects.single.structuredData['couponCode'], 'RUN20');
+    expect(
+      result.actions.map((action) => action.type.value),
+      containsAll(['copy', 'reminder']),
+    );
   });
 }
 
 final class _FakePhotoRepository implements PhotoRepository {
   @override
-  Future<void> deleteAssets(List<String> assetIds) async {}
+  Future<PhotoPermissionState> currentPermission() async =>
+      PhotoPermissionState.authorized;
+
+  @override
+  Future<Set<String>> deleteAssets(List<String> assetIds) async =>
+      assetIds.toSet();
 
   @override
   Future<Uint8List?> getProcessingImage(String assetId) async =>
@@ -85,6 +138,13 @@ final class _FakePhotoRepository implements PhotoRepository {
   }) async => const [];
 
   @override
+  Stream<List<PhotoAsset>> getScreenshotBatches({int batchSize = 50}) =>
+      const Stream.empty();
+
+  @override
+  Future<void> openSettings() async {}
+
+  @override
   Future<Uint8List?> getThumbnail(String assetId) async => null;
 
   @override
@@ -93,12 +153,18 @@ final class _FakePhotoRepository implements PhotoRepository {
 }
 
 final class _FakeTextRecognition implements TextRecognitionService {
+  _FakeTextRecognition([
+    this.text = 'Event ticket 2026-08-22 https://example.com',
+  ]);
+
+  final String text;
+
   @override
   Future<void> close() async {}
 
   @override
   Future<RecognizedText> recognize(Uint8List imageBytes) async =>
-      const RecognizedText('Event ticket 2026-08-22 https://example.com');
+      RecognizedText.plain(text);
 }
 
 final class _FakeBarcodeRecognition implements BarcodeRecognitionService {

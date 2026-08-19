@@ -15,6 +15,8 @@ final class CalendarEventDraft {
     this.location,
     this.url,
     this.isAllDay = false,
+    this.timeZone,
+    this.endTimeInferred = false,
   });
 
   final String title;
@@ -24,6 +26,26 @@ final class CalendarEventDraft {
   final String? location;
   final String? url;
   final bool isAllDay;
+  final String? timeZone;
+  final bool endTimeInferred;
+}
+
+enum CalendarFailureCode {
+  permissionDenied,
+  noWritableCalendar,
+  invalidPayload,
+  platformFailure,
+}
+
+final class CalendarException implements Exception {
+  const CalendarException(this.code, this.message, [this.cause]);
+
+  final CalendarFailureCode code;
+  final String message;
+  final Object? cause;
+
+  @override
+  String toString() => message;
 }
 
 abstract interface class CalendarGateway {
@@ -57,4 +79,8 @@ abstract interface class NotificationGateway {
 
 abstract interface class UrlGateway {
   Future<bool> openExternal(Uri uri);
+}
+
+abstract interface class ClipboardGateway {
+  Future<void> copyText(String text);
 }

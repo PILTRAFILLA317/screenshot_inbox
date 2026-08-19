@@ -11,6 +11,7 @@ final class SuggestedActionType {
   static const openUrl = SuggestedActionType('openUrl');
   static const copy = SuggestedActionType('copy');
   static const track = SuggestedActionType('track');
+  static const searchWeb = SuggestedActionType('searchWeb');
   static const saveObject = SuggestedActionType('saveObject');
   static const deleteScreenshot = SuggestedActionType('deleteScreenshot');
 
@@ -49,4 +50,22 @@ final class SuggestedAction {
   final DateTime createdAt;
   final DateTime? completedAt;
   final DateTime? dismissedAt;
+
+  SuggestedAction copyWith({
+    JsonMap? payload,
+    SuggestedActionStatus? status,
+    DateTime? completedAt,
+    DateTime? dismissedAt,
+  }) => SuggestedAction(
+    id: id,
+    screenshotId: screenshotId,
+    extractedObjectId: extractedObjectId,
+    type: type,
+    payload: payload ?? this.payload,
+    confidence: confidence,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    completedAt: completedAt ?? this.completedAt,
+    dismissedAt: dismissedAt ?? this.dismissedAt,
+  );
 }

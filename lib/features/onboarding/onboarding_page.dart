@@ -11,6 +11,9 @@ final class OnboardingPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final permission = ref.watch(onboardingControllerProvider);
     final canContinue = permission.valueOrNull?.canRead ?? false;
+    final blocked =
+        permission.valueOrNull == PhotoPermissionState.denied ||
+        permission.valueOrNull == PhotoPermissionState.restricted;
 
     return Scaffold(
       body: SafeArea(
@@ -48,15 +51,39 @@ final class OnboardingPage extends ConsumerWidget {
                     ),
                   ),
                 ),
+              if (blocked)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Photo access is off. Open system settings, allow access, then check again.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              if (permission.valueOrNull == PhotoPermissionState.limited)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Limited access is active. Only the screenshots you selected will be processed.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               FilledButton(
                 onPressed: permission.isLoading
                     ? null
+                    : blocked
+                    ? () => ref
+                          .read(onboardingControllerProvider.notifier)
+                          .openSettings()
                     : () => ref
                           .read(onboardingControllerProvider.notifier)
                           .requestPermission(),
                 child: Text(
                   permission.isLoading
                       ? 'Requesting access…'
+                      : blocked
+                      ? 'Open system settings'
                       : canContinue
                       ? 'Photo access granted'
                       : 'Allow photo access',
@@ -64,7 +91,11 @@ final class OnboardingPage extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: canContinue
+                onPressed: blocked
+                    ? () => ref
+                          .read(onboardingControllerProvider.notifier)
+                          .checkPermission()
+                    : canContinue
                     ? () =>
                           Navigator.of(context)
                               .pushReplacementNamed(AppRoutes.home)
@@ -75,7 +106,7 @@ final class OnboardingPage extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text('Continue'),
+                child: Text(blocked ? 'Check access' : 'Continue'),
               ),
             ],
           ),

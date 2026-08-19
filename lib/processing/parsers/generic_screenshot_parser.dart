@@ -25,7 +25,10 @@ final class GenericScreenshotParser implements ScreenshotParser {
     ScreenshotType.product,
     ScreenshotType.place,
     ScreenshotType.order,
+    ScreenshotType.conversationTask,
     ScreenshotType.conversation,
+    ScreenshotType.reference,
+    ScreenshotType.other,
   };
 
   @override

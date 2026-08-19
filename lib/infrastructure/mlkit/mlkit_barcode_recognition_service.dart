@@ -21,10 +21,51 @@ final class MlKitBarcodeRecognitionService
     return [
       for (final barcode in barcodes)
         if (barcode.rawValue case final String value)
-          RecognizedBarcode(rawValue: value, format: barcode.format.name),
+          RecognizedBarcode(
+            rawValue: value,
+            displayValue: barcode.displayValue,
+            format: barcode.format.name,
+            valueType: barcode.type.name,
+            boundingBox: RecognitionBounds(
+              left: barcode.boundingBox.left,
+              top: barcode.boundingBox.top,
+              right: barcode.boundingBox.right,
+              bottom: barcode.boundingBox.bottom,
+            ),
+            payload: _payload(barcode),
+          ),
     ];
   }
 
   @override
   Future<void> close() => _scanner.close();
+
+  static Map<String, Object?> _payload(mlkit.Barcode barcode) {
+    final value = barcode.value;
+    return switch (value) {
+      mlkit.BarcodeUrl(:final url, :final title) => {
+        'url': ?url,
+        'title': ?title,
+      },
+      mlkit.BarcodeEmail(:final address, :final subject, :final body) => {
+        'email': ?address,
+        'subject': ?subject,
+        'body': ?body,
+      },
+      mlkit.BarcodePhone(:final number) => {'phone': ?number},
+      mlkit.BarcodeSMS(:final phoneNumber, :final message) => {
+        'phone': ?phoneNumber,
+        'message': ?message,
+      },
+      mlkit.BarcodeGeoPoint(:final latitude, :final longitude) => {
+        'latitude': ?latitude,
+        'longitude': ?longitude,
+      },
+      mlkit.BarcodeWifi(:final ssid, :final encryptionType) => {
+        'ssid': ?ssid,
+        'encryptionType': ?encryptionType,
+      },
+      _ => const <String, Object?>{},
+    };
+  }
 }

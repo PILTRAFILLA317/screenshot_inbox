@@ -3,10 +3,7 @@ import 'package:screenshot_inbox/app/router.dart';
 import 'package:screenshot_inbox/app/theme/app_theme.dart';
 
 final class ScreenshotInboxApp extends StatelessWidget {
-  const ScreenshotInboxApp({
-    super.key,
-    this.initialRoute = AppRoutes.onboarding,
-  });
+  const ScreenshotInboxApp({super.key, this.initialRoute = AppRoutes.startup});
 
   final String initialRoute;
 

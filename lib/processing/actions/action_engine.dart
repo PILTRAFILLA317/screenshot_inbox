@@ -18,6 +18,7 @@ final class ActionEngine {
     final actions = <SuggestedAction>[];
     final deduplicationKeys = <String>{};
     for (final object in objects) {
+      if (object.structuredData['_suppressActions'] == true) continue;
       final proposals = await _registry.propose(object);
       for (final proposal in proposals) {
         final key = '${object.id}:${proposal.type.value}:${proposal.payload}';
