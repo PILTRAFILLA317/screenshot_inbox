@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot_type.dart';
+import 'package:screenshot_inbox/domain/intelligence/intelligence_provider.dart';
+import 'package:screenshot_inbox/infrastructure/intelligence/fake_intelligence_provider.dart';
 import 'package:screenshot_inbox/processing/actions/action_engine.dart';
 import 'package:screenshot_inbox/processing/actions/action_policy_registry.dart';
 import 'package:screenshot_inbox/processing/actions/default_action_policies.dart';
@@ -12,11 +14,15 @@ import 'package:screenshot_inbox/processing/entities/entity_extractor.dart';
 import 'package:screenshot_inbox/processing/lifecycle/default_lifecycle_policies.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_engine.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_policy_registry.dart';
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
+import 'package:screenshot_inbox/processing/intelligence/intelligence_enricher.dart';
+import 'package:screenshot_inbox/processing/intelligence/interpretation_validator.dart';
 import 'package:screenshot_inbox/processing/ocr/recognition_services.dart';
 import 'package:screenshot_inbox/processing/parsers/default_screenshot_parsers.dart';
 import 'package:screenshot_inbox/processing/parsers/generic_screenshot_parser.dart';
 import 'package:screenshot_inbox/processing/parsers/parser_registry.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_context.dart';
+import 'package:screenshot_inbox/processing/pipeline/fast_scan_result.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
 import 'package:screenshot_inbox/processing/pipeline/screenshot_processing_pipeline.dart';
 
@@ -60,7 +66,7 @@ void main() {
       result.screenshot.processingStatus,
       ScreenshotProcessingStatus.processed,
     );
-    expect(result.screenshot.processingVersion, 2);
+    expect(result.screenshot.processingVersion, 3);
     expect(result.screenshot.primaryType, ScreenshotType.reference);
     expect(result.screenshot.currentLifecycleState.name, 'actionable');
     expect(
@@ -116,6 +122,49 @@ void main() {
       containsAll(['copy', 'reminder']),
     );
   });
+
+  test('same asset and versions restore cache without OCR or AI', () async {
+    final clock = FixedClock(DateTime.utc(2026, 8, 21, 12));
+    final ids = SequenceIdGenerator();
+    final store = _FakeProcessingStore();
+    final text = _FakeTextRecognition();
+    final provider = FakeIntelligenceProvider();
+    final pipeline = ScreenshotProcessingPipeline(
+      photos: _FakePhotoRepository(),
+      textRecognition: text,
+      barcodeRecognition: _FakeBarcodeRecognition(),
+      entityExtractor: RegexEntityExtractor(ids),
+      classifier: _EventClassifier(),
+      parsers: ParserRegistry([GenericScreenshotParser(ids, clock)]),
+      actions: ActionEngine(
+        ActionPolicyRegistry(const [SaveObjectActionPolicy()]),
+        ids,
+        clock,
+      ),
+      lifecycle: LifecycleEngine(
+        LifecyclePolicyRegistry(const [DefaultLifecyclePolicy()]),
+        clock,
+      ),
+      store: store,
+      clock: clock,
+      ids: ids,
+      intelligence: IntelligenceEnricher(
+        provider: provider,
+        validator: const InterpretationValidator(),
+        policy: IntelligenceUsagePolicy.alwaysForSupportedTypes,
+        clock: clock,
+        ids: ids,
+      ),
+    );
+    final screenshot = screenshotFixture();
+
+    final first = await pipeline.process(screenshot);
+    final restored = await pipeline.restoreFastScan(first.screenshot);
+
+    expect(restored, isNotNull);
+    expect(text.recognizeCount, 1);
+    expect(provider.requests, hasLength(1));
+  });
 }
 
 final class _FakePhotoRepository implements PhotoRepository {
@@ -128,8 +177,16 @@ final class _FakePhotoRepository implements PhotoRepository {
       assetIds.toSet();
 
   @override
-  Future<Uint8List?> getProcessingImage(String assetId) async =>
-      Uint8List.fromList([1, 2, 3]);
+  Future<ProcessingImageLoad?> getProcessingImage(
+    String assetId, {
+    ProcessingImagePurpose purpose = ProcessingImagePurpose.ocr,
+  }) async => ProcessingImageLoad(
+    bytes: Uint8List.fromList([1, 2, 3]),
+    width: 100,
+    height: 200,
+    assetLoadingDuration: Duration.zero,
+    generationDuration: Duration.zero,
+  );
 
   @override
   Future<List<PhotoAsset>> getScreenshots({
@@ -158,16 +215,19 @@ final class _FakeTextRecognition implements TextRecognitionService {
   ]);
 
   final String text;
+  var recognizeCount = 0;
 
   @override
   Future<void> close() async {}
 
   @override
-  Future<RecognizedText> recognize(Uint8List imageBytes) async =>
-      RecognizedText(
-        fullText: text,
-        blocks: [RecognizedTextBlock(id: 'B01', text: text, lines: const [])],
-      );
+  Future<RecognizedText> recognize(Uint8List imageBytes) async {
+    recognizeCount++;
+    return RecognizedText(
+      fullText: text,
+      blocks: [RecognizedTextBlock(id: 'B01', text: text, lines: const [])],
+    );
+  }
 }
 
 final class _FakeBarcodeRecognition implements BarcodeRecognitionService {
@@ -192,6 +252,54 @@ final class _EventClassifier implements ScreenshotClassifier {
 final class _FakeProcessingStore implements ProcessingStore {
   bool markedProcessing = false;
   ProcessingResult? persisted;
+  ProcessingRecord? record;
+  FastScanResult? fastScan;
+
+  @override
+  Future<int> clearProcessingCache() async => 0;
+
+  @override
+  Future<void> clearProcessingCacheFor(String screenshotId) async {}
+
+  @override
+  Future<ProcessingRecord?> findProcessingRecord(String screenshotId) async =>
+      record;
+
+  @override
+  Future<Map<String, ProcessingRecord>> findProcessingRecords(
+    Iterable<String> screenshotIds,
+  ) async => record == null ? const {} : {record!.screenshotId: record!};
+
+  @override
+  Future<FastScanResult?> loadFastScan(
+    Screenshot screenshot,
+    ProcessingRecord record,
+  ) async => fastScan;
+
+  @override
+  Future<void> persistFastScan(
+    FastScanResult result,
+    ProcessingRecord record,
+  ) async {
+    fastScan = result;
+    this.record = record;
+  }
+
+  @override
+  Future<ProcessingCacheStats> processingStats() async =>
+      const ProcessingCacheStats(
+        total: 0,
+        fastScanned: 0,
+        deepAnalyzed: 0,
+        queued: 0,
+        deferred: 0,
+        failed: 0,
+      );
+
+  @override
+  Future<void> saveProcessingRecord(ProcessingRecord record) async {
+    this.record = record;
+  }
 
   @override
   Future<void> markFailed(

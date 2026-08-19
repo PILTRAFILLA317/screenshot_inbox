@@ -3178,6 +3178,881 @@ class LifecycleEventsCompanion extends UpdateCompanion<LifecycleEventRow> {
   }
 }
 
+class $ProcessingRecordsTable extends ProcessingRecords
+    with TableInfo<$ProcessingRecordsTable, ProcessingRecordRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProcessingRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _screenshotIdMeta = const VerificationMeta(
+    'screenshotId',
+  );
+  @override
+  late final GeneratedColumn<String> screenshotId = GeneratedColumn<String>(
+    'screenshot_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES screenshots (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _assetFingerprintMeta = const VerificationMeta(
+    'assetFingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> assetFingerprint = GeneratedColumn<String>(
+    'asset_fingerprint',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fastStateMeta = const VerificationMeta(
+    'fastState',
+  );
+  @override
+  late final GeneratedColumn<String> fastState = GeneratedColumn<String>(
+    'fast_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deepStateMeta = const VerificationMeta(
+    'deepState',
+  );
+  @override
+  late final GeneratedColumn<String> deepState = GeneratedColumn<String>(
+    'deep_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fastFingerprintMeta = const VerificationMeta(
+    'fastFingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> fastFingerprint = GeneratedColumn<String>(
+    'fast_fingerprint',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deepFingerprintMeta = const VerificationMeta(
+    'deepFingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> deepFingerprint = GeneratedColumn<String>(
+    'deep_fingerprint',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fastPayloadJsonMeta = const VerificationMeta(
+    'fastPayloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> fastPayloadJson = GeneratedColumn<String>(
+    'fast_payload_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _aiPriorityMeta = const VerificationMeta(
+    'aiPriority',
+  );
+  @override
+  late final GeneratedColumn<double> aiPriority = GeneratedColumn<double>(
+    'ai_priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _aiEligibilityReasonsJsonMeta =
+      const VerificationMeta('aiEligibilityReasonsJson');
+  @override
+  late final GeneratedColumn<String> aiEligibilityReasonsJson =
+      GeneratedColumn<String>(
+        'ai_eligibility_reasons_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _fastTimingsJsonMeta = const VerificationMeta(
+    'fastTimingsJson',
+  );
+  @override
+  late final GeneratedColumn<String> fastTimingsJson = GeneratedColumn<String>(
+    'fast_timings_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deepTimingsJsonMeta = const VerificationMeta(
+    'deepTimingsJson',
+  );
+  @override
+  late final GeneratedColumn<String> deepTimingsJson = GeneratedColumn<String>(
+    'deep_timings_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _retryCountMeta = const VerificationMeta(
+    'retryCount',
+  );
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+    'retry_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _nextRetryAtMeta = const VerificationMeta(
+    'nextRetryAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+    'next_retry_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    screenshotId,
+    assetFingerprint,
+    fastState,
+    deepState,
+    fastFingerprint,
+    deepFingerprint,
+    fastPayloadJson,
+    aiPriority,
+    aiEligibilityReasonsJson,
+    fastTimingsJson,
+    deepTimingsJson,
+    retryCount,
+    nextRetryAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'processing_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProcessingRecordRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('screenshot_id')) {
+      context.handle(
+        _screenshotIdMeta,
+        screenshotId.isAcceptableOrUnknown(
+          data['screenshot_id']!,
+          _screenshotIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_screenshotIdMeta);
+    }
+    if (data.containsKey('asset_fingerprint')) {
+      context.handle(
+        _assetFingerprintMeta,
+        assetFingerprint.isAcceptableOrUnknown(
+          data['asset_fingerprint']!,
+          _assetFingerprintMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_assetFingerprintMeta);
+    }
+    if (data.containsKey('fast_state')) {
+      context.handle(
+        _fastStateMeta,
+        fastState.isAcceptableOrUnknown(data['fast_state']!, _fastStateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fastStateMeta);
+    }
+    if (data.containsKey('deep_state')) {
+      context.handle(
+        _deepStateMeta,
+        deepState.isAcceptableOrUnknown(data['deep_state']!, _deepStateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deepStateMeta);
+    }
+    if (data.containsKey('fast_fingerprint')) {
+      context.handle(
+        _fastFingerprintMeta,
+        fastFingerprint.isAcceptableOrUnknown(
+          data['fast_fingerprint']!,
+          _fastFingerprintMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deep_fingerprint')) {
+      context.handle(
+        _deepFingerprintMeta,
+        deepFingerprint.isAcceptableOrUnknown(
+          data['deep_fingerprint']!,
+          _deepFingerprintMeta,
+        ),
+      );
+    }
+    if (data.containsKey('fast_payload_json')) {
+      context.handle(
+        _fastPayloadJsonMeta,
+        fastPayloadJson.isAcceptableOrUnknown(
+          data['fast_payload_json']!,
+          _fastPayloadJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('ai_priority')) {
+      context.handle(
+        _aiPriorityMeta,
+        aiPriority.isAcceptableOrUnknown(data['ai_priority']!, _aiPriorityMeta),
+      );
+    }
+    if (data.containsKey('ai_eligibility_reasons_json')) {
+      context.handle(
+        _aiEligibilityReasonsJsonMeta,
+        aiEligibilityReasonsJson.isAcceptableOrUnknown(
+          data['ai_eligibility_reasons_json']!,
+          _aiEligibilityReasonsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_aiEligibilityReasonsJsonMeta);
+    }
+    if (data.containsKey('fast_timings_json')) {
+      context.handle(
+        _fastTimingsJsonMeta,
+        fastTimingsJson.isAcceptableOrUnknown(
+          data['fast_timings_json']!,
+          _fastTimingsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fastTimingsJsonMeta);
+    }
+    if (data.containsKey('deep_timings_json')) {
+      context.handle(
+        _deepTimingsJsonMeta,
+        deepTimingsJson.isAcceptableOrUnknown(
+          data['deep_timings_json']!,
+          _deepTimingsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_deepTimingsJsonMeta);
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+        _retryCountMeta,
+        retryCount.isAcceptableOrUnknown(data['retry_count']!, _retryCountMeta),
+      );
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+        _nextRetryAtMeta,
+        nextRetryAt.isAcceptableOrUnknown(
+          data['next_retry_at']!,
+          _nextRetryAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {screenshotId};
+  @override
+  ProcessingRecordRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProcessingRecordRow(
+      screenshotId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}screenshot_id'],
+      )!,
+      assetFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_fingerprint'],
+      )!,
+      fastState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fast_state'],
+      )!,
+      deepState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deep_state'],
+      )!,
+      fastFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fast_fingerprint'],
+      ),
+      deepFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deep_fingerprint'],
+      ),
+      fastPayloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fast_payload_json'],
+      ),
+      aiPriority: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}ai_priority'],
+      )!,
+      aiEligibilityReasonsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ai_eligibility_reasons_json'],
+      )!,
+      fastTimingsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fast_timings_json'],
+      )!,
+      deepTimingsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deep_timings_json'],
+      )!,
+      retryCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}retry_count'],
+      )!,
+      nextRetryAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_retry_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ProcessingRecordsTable createAlias(String alias) {
+    return $ProcessingRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class ProcessingRecordRow extends DataClass
+    implements Insertable<ProcessingRecordRow> {
+  final String screenshotId;
+  final String assetFingerprint;
+  final String fastState;
+  final String deepState;
+  final String? fastFingerprint;
+  final String? deepFingerprint;
+  final String? fastPayloadJson;
+  final double aiPriority;
+  final String aiEligibilityReasonsJson;
+  final String fastTimingsJson;
+  final String deepTimingsJson;
+  final int retryCount;
+  final DateTime? nextRetryAt;
+  final DateTime updatedAt;
+  const ProcessingRecordRow({
+    required this.screenshotId,
+    required this.assetFingerprint,
+    required this.fastState,
+    required this.deepState,
+    this.fastFingerprint,
+    this.deepFingerprint,
+    this.fastPayloadJson,
+    required this.aiPriority,
+    required this.aiEligibilityReasonsJson,
+    required this.fastTimingsJson,
+    required this.deepTimingsJson,
+    required this.retryCount,
+    this.nextRetryAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['screenshot_id'] = Variable<String>(screenshotId);
+    map['asset_fingerprint'] = Variable<String>(assetFingerprint);
+    map['fast_state'] = Variable<String>(fastState);
+    map['deep_state'] = Variable<String>(deepState);
+    if (!nullToAbsent || fastFingerprint != null) {
+      map['fast_fingerprint'] = Variable<String>(fastFingerprint);
+    }
+    if (!nullToAbsent || deepFingerprint != null) {
+      map['deep_fingerprint'] = Variable<String>(deepFingerprint);
+    }
+    if (!nullToAbsent || fastPayloadJson != null) {
+      map['fast_payload_json'] = Variable<String>(fastPayloadJson);
+    }
+    map['ai_priority'] = Variable<double>(aiPriority);
+    map['ai_eligibility_reasons_json'] = Variable<String>(
+      aiEligibilityReasonsJson,
+    );
+    map['fast_timings_json'] = Variable<String>(fastTimingsJson);
+    map['deep_timings_json'] = Variable<String>(deepTimingsJson);
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ProcessingRecordsCompanion toCompanion(bool nullToAbsent) {
+    return ProcessingRecordsCompanion(
+      screenshotId: Value(screenshotId),
+      assetFingerprint: Value(assetFingerprint),
+      fastState: Value(fastState),
+      deepState: Value(deepState),
+      fastFingerprint: fastFingerprint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fastFingerprint),
+      deepFingerprint: deepFingerprint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deepFingerprint),
+      fastPayloadJson: fastPayloadJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fastPayloadJson),
+      aiPriority: Value(aiPriority),
+      aiEligibilityReasonsJson: Value(aiEligibilityReasonsJson),
+      fastTimingsJson: Value(fastTimingsJson),
+      deepTimingsJson: Value(deepTimingsJson),
+      retryCount: Value(retryCount),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ProcessingRecordRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProcessingRecordRow(
+      screenshotId: serializer.fromJson<String>(json['screenshotId']),
+      assetFingerprint: serializer.fromJson<String>(json['assetFingerprint']),
+      fastState: serializer.fromJson<String>(json['fastState']),
+      deepState: serializer.fromJson<String>(json['deepState']),
+      fastFingerprint: serializer.fromJson<String?>(json['fastFingerprint']),
+      deepFingerprint: serializer.fromJson<String?>(json['deepFingerprint']),
+      fastPayloadJson: serializer.fromJson<String?>(json['fastPayloadJson']),
+      aiPriority: serializer.fromJson<double>(json['aiPriority']),
+      aiEligibilityReasonsJson: serializer.fromJson<String>(
+        json['aiEligibilityReasonsJson'],
+      ),
+      fastTimingsJson: serializer.fromJson<String>(json['fastTimingsJson']),
+      deepTimingsJson: serializer.fromJson<String>(json['deepTimingsJson']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'screenshotId': serializer.toJson<String>(screenshotId),
+      'assetFingerprint': serializer.toJson<String>(assetFingerprint),
+      'fastState': serializer.toJson<String>(fastState),
+      'deepState': serializer.toJson<String>(deepState),
+      'fastFingerprint': serializer.toJson<String?>(fastFingerprint),
+      'deepFingerprint': serializer.toJson<String?>(deepFingerprint),
+      'fastPayloadJson': serializer.toJson<String?>(fastPayloadJson),
+      'aiPriority': serializer.toJson<double>(aiPriority),
+      'aiEligibilityReasonsJson': serializer.toJson<String>(
+        aiEligibilityReasonsJson,
+      ),
+      'fastTimingsJson': serializer.toJson<String>(fastTimingsJson),
+      'deepTimingsJson': serializer.toJson<String>(deepTimingsJson),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ProcessingRecordRow copyWith({
+    String? screenshotId,
+    String? assetFingerprint,
+    String? fastState,
+    String? deepState,
+    Value<String?> fastFingerprint = const Value.absent(),
+    Value<String?> deepFingerprint = const Value.absent(),
+    Value<String?> fastPayloadJson = const Value.absent(),
+    double? aiPriority,
+    String? aiEligibilityReasonsJson,
+    String? fastTimingsJson,
+    String? deepTimingsJson,
+    int? retryCount,
+    Value<DateTime?> nextRetryAt = const Value.absent(),
+    DateTime? updatedAt,
+  }) => ProcessingRecordRow(
+    screenshotId: screenshotId ?? this.screenshotId,
+    assetFingerprint: assetFingerprint ?? this.assetFingerprint,
+    fastState: fastState ?? this.fastState,
+    deepState: deepState ?? this.deepState,
+    fastFingerprint: fastFingerprint.present
+        ? fastFingerprint.value
+        : this.fastFingerprint,
+    deepFingerprint: deepFingerprint.present
+        ? deepFingerprint.value
+        : this.deepFingerprint,
+    fastPayloadJson: fastPayloadJson.present
+        ? fastPayloadJson.value
+        : this.fastPayloadJson,
+    aiPriority: aiPriority ?? this.aiPriority,
+    aiEligibilityReasonsJson:
+        aiEligibilityReasonsJson ?? this.aiEligibilityReasonsJson,
+    fastTimingsJson: fastTimingsJson ?? this.fastTimingsJson,
+    deepTimingsJson: deepTimingsJson ?? this.deepTimingsJson,
+    retryCount: retryCount ?? this.retryCount,
+    nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ProcessingRecordRow copyWithCompanion(ProcessingRecordsCompanion data) {
+    return ProcessingRecordRow(
+      screenshotId: data.screenshotId.present
+          ? data.screenshotId.value
+          : this.screenshotId,
+      assetFingerprint: data.assetFingerprint.present
+          ? data.assetFingerprint.value
+          : this.assetFingerprint,
+      fastState: data.fastState.present ? data.fastState.value : this.fastState,
+      deepState: data.deepState.present ? data.deepState.value : this.deepState,
+      fastFingerprint: data.fastFingerprint.present
+          ? data.fastFingerprint.value
+          : this.fastFingerprint,
+      deepFingerprint: data.deepFingerprint.present
+          ? data.deepFingerprint.value
+          : this.deepFingerprint,
+      fastPayloadJson: data.fastPayloadJson.present
+          ? data.fastPayloadJson.value
+          : this.fastPayloadJson,
+      aiPriority: data.aiPriority.present
+          ? data.aiPriority.value
+          : this.aiPriority,
+      aiEligibilityReasonsJson: data.aiEligibilityReasonsJson.present
+          ? data.aiEligibilityReasonsJson.value
+          : this.aiEligibilityReasonsJson,
+      fastTimingsJson: data.fastTimingsJson.present
+          ? data.fastTimingsJson.value
+          : this.fastTimingsJson,
+      deepTimingsJson: data.deepTimingsJson.present
+          ? data.deepTimingsJson.value
+          : this.deepTimingsJson,
+      retryCount: data.retryCount.present
+          ? data.retryCount.value
+          : this.retryCount,
+      nextRetryAt: data.nextRetryAt.present
+          ? data.nextRetryAt.value
+          : this.nextRetryAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProcessingRecordRow(')
+          ..write('screenshotId: $screenshotId, ')
+          ..write('assetFingerprint: $assetFingerprint, ')
+          ..write('fastState: $fastState, ')
+          ..write('deepState: $deepState, ')
+          ..write('fastFingerprint: $fastFingerprint, ')
+          ..write('deepFingerprint: $deepFingerprint, ')
+          ..write('fastPayloadJson: $fastPayloadJson, ')
+          ..write('aiPriority: $aiPriority, ')
+          ..write('aiEligibilityReasonsJson: $aiEligibilityReasonsJson, ')
+          ..write('fastTimingsJson: $fastTimingsJson, ')
+          ..write('deepTimingsJson: $deepTimingsJson, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    screenshotId,
+    assetFingerprint,
+    fastState,
+    deepState,
+    fastFingerprint,
+    deepFingerprint,
+    fastPayloadJson,
+    aiPriority,
+    aiEligibilityReasonsJson,
+    fastTimingsJson,
+    deepTimingsJson,
+    retryCount,
+    nextRetryAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProcessingRecordRow &&
+          other.screenshotId == this.screenshotId &&
+          other.assetFingerprint == this.assetFingerprint &&
+          other.fastState == this.fastState &&
+          other.deepState == this.deepState &&
+          other.fastFingerprint == this.fastFingerprint &&
+          other.deepFingerprint == this.deepFingerprint &&
+          other.fastPayloadJson == this.fastPayloadJson &&
+          other.aiPriority == this.aiPriority &&
+          other.aiEligibilityReasonsJson == this.aiEligibilityReasonsJson &&
+          other.fastTimingsJson == this.fastTimingsJson &&
+          other.deepTimingsJson == this.deepTimingsJson &&
+          other.retryCount == this.retryCount &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ProcessingRecordsCompanion extends UpdateCompanion<ProcessingRecordRow> {
+  final Value<String> screenshotId;
+  final Value<String> assetFingerprint;
+  final Value<String> fastState;
+  final Value<String> deepState;
+  final Value<String?> fastFingerprint;
+  final Value<String?> deepFingerprint;
+  final Value<String?> fastPayloadJson;
+  final Value<double> aiPriority;
+  final Value<String> aiEligibilityReasonsJson;
+  final Value<String> fastTimingsJson;
+  final Value<String> deepTimingsJson;
+  final Value<int> retryCount;
+  final Value<DateTime?> nextRetryAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ProcessingRecordsCompanion({
+    this.screenshotId = const Value.absent(),
+    this.assetFingerprint = const Value.absent(),
+    this.fastState = const Value.absent(),
+    this.deepState = const Value.absent(),
+    this.fastFingerprint = const Value.absent(),
+    this.deepFingerprint = const Value.absent(),
+    this.fastPayloadJson = const Value.absent(),
+    this.aiPriority = const Value.absent(),
+    this.aiEligibilityReasonsJson = const Value.absent(),
+    this.fastTimingsJson = const Value.absent(),
+    this.deepTimingsJson = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProcessingRecordsCompanion.insert({
+    required String screenshotId,
+    required String assetFingerprint,
+    required String fastState,
+    required String deepState,
+    this.fastFingerprint = const Value.absent(),
+    this.deepFingerprint = const Value.absent(),
+    this.fastPayloadJson = const Value.absent(),
+    this.aiPriority = const Value.absent(),
+    required String aiEligibilityReasonsJson,
+    required String fastTimingsJson,
+    required String deepTimingsJson,
+    this.retryCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : screenshotId = Value(screenshotId),
+       assetFingerprint = Value(assetFingerprint),
+       fastState = Value(fastState),
+       deepState = Value(deepState),
+       aiEligibilityReasonsJson = Value(aiEligibilityReasonsJson),
+       fastTimingsJson = Value(fastTimingsJson),
+       deepTimingsJson = Value(deepTimingsJson),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProcessingRecordRow> custom({
+    Expression<String>? screenshotId,
+    Expression<String>? assetFingerprint,
+    Expression<String>? fastState,
+    Expression<String>? deepState,
+    Expression<String>? fastFingerprint,
+    Expression<String>? deepFingerprint,
+    Expression<String>? fastPayloadJson,
+    Expression<double>? aiPriority,
+    Expression<String>? aiEligibilityReasonsJson,
+    Expression<String>? fastTimingsJson,
+    Expression<String>? deepTimingsJson,
+    Expression<int>? retryCount,
+    Expression<DateTime>? nextRetryAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (screenshotId != null) 'screenshot_id': screenshotId,
+      if (assetFingerprint != null) 'asset_fingerprint': assetFingerprint,
+      if (fastState != null) 'fast_state': fastState,
+      if (deepState != null) 'deep_state': deepState,
+      if (fastFingerprint != null) 'fast_fingerprint': fastFingerprint,
+      if (deepFingerprint != null) 'deep_fingerprint': deepFingerprint,
+      if (fastPayloadJson != null) 'fast_payload_json': fastPayloadJson,
+      if (aiPriority != null) 'ai_priority': aiPriority,
+      if (aiEligibilityReasonsJson != null)
+        'ai_eligibility_reasons_json': aiEligibilityReasonsJson,
+      if (fastTimingsJson != null) 'fast_timings_json': fastTimingsJson,
+      if (deepTimingsJson != null) 'deep_timings_json': deepTimingsJson,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProcessingRecordsCompanion copyWith({
+    Value<String>? screenshotId,
+    Value<String>? assetFingerprint,
+    Value<String>? fastState,
+    Value<String>? deepState,
+    Value<String?>? fastFingerprint,
+    Value<String?>? deepFingerprint,
+    Value<String?>? fastPayloadJson,
+    Value<double>? aiPriority,
+    Value<String>? aiEligibilityReasonsJson,
+    Value<String>? fastTimingsJson,
+    Value<String>? deepTimingsJson,
+    Value<int>? retryCount,
+    Value<DateTime?>? nextRetryAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ProcessingRecordsCompanion(
+      screenshotId: screenshotId ?? this.screenshotId,
+      assetFingerprint: assetFingerprint ?? this.assetFingerprint,
+      fastState: fastState ?? this.fastState,
+      deepState: deepState ?? this.deepState,
+      fastFingerprint: fastFingerprint ?? this.fastFingerprint,
+      deepFingerprint: deepFingerprint ?? this.deepFingerprint,
+      fastPayloadJson: fastPayloadJson ?? this.fastPayloadJson,
+      aiPriority: aiPriority ?? this.aiPriority,
+      aiEligibilityReasonsJson:
+          aiEligibilityReasonsJson ?? this.aiEligibilityReasonsJson,
+      fastTimingsJson: fastTimingsJson ?? this.fastTimingsJson,
+      deepTimingsJson: deepTimingsJson ?? this.deepTimingsJson,
+      retryCount: retryCount ?? this.retryCount,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (screenshotId.present) {
+      map['screenshot_id'] = Variable<String>(screenshotId.value);
+    }
+    if (assetFingerprint.present) {
+      map['asset_fingerprint'] = Variable<String>(assetFingerprint.value);
+    }
+    if (fastState.present) {
+      map['fast_state'] = Variable<String>(fastState.value);
+    }
+    if (deepState.present) {
+      map['deep_state'] = Variable<String>(deepState.value);
+    }
+    if (fastFingerprint.present) {
+      map['fast_fingerprint'] = Variable<String>(fastFingerprint.value);
+    }
+    if (deepFingerprint.present) {
+      map['deep_fingerprint'] = Variable<String>(deepFingerprint.value);
+    }
+    if (fastPayloadJson.present) {
+      map['fast_payload_json'] = Variable<String>(fastPayloadJson.value);
+    }
+    if (aiPriority.present) {
+      map['ai_priority'] = Variable<double>(aiPriority.value);
+    }
+    if (aiEligibilityReasonsJson.present) {
+      map['ai_eligibility_reasons_json'] = Variable<String>(
+        aiEligibilityReasonsJson.value,
+      );
+    }
+    if (fastTimingsJson.present) {
+      map['fast_timings_json'] = Variable<String>(fastTimingsJson.value);
+    }
+    if (deepTimingsJson.present) {
+      map['deep_timings_json'] = Variable<String>(deepTimingsJson.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProcessingRecordsCompanion(')
+          ..write('screenshotId: $screenshotId, ')
+          ..write('assetFingerprint: $assetFingerprint, ')
+          ..write('fastState: $fastState, ')
+          ..write('deepState: $deepState, ')
+          ..write('fastFingerprint: $fastFingerprint, ')
+          ..write('deepFingerprint: $deepFingerprint, ')
+          ..write('fastPayloadJson: $fastPayloadJson, ')
+          ..write('aiPriority: $aiPriority, ')
+          ..write('aiEligibilityReasonsJson: $aiEligibilityReasonsJson, ')
+          ..write('fastTimingsJson: $fastTimingsJson, ')
+          ..write('deepTimingsJson: $deepTimingsJson, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3192,6 +4067,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LifecycleEventsTable lifecycleEvents = $LifecycleEventsTable(
     this,
   );
+  late final $ProcessingRecordsTable processingRecords =
+      $ProcessingRecordsTable(this);
   late final Index screenshotsAssetIdIdx = Index(
     'screenshots_asset_id_idx',
     'CREATE UNIQUE INDEX screenshots_asset_id_idx ON screenshots (asset_id)',
@@ -3236,6 +4113,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'lifecycle_type_idx',
     'CREATE INDEX lifecycle_type_idx ON lifecycle_events (type)',
   );
+  late final Index processingFastStateIdx = Index(
+    'processing_fast_state_idx',
+    'CREATE INDEX processing_fast_state_idx ON processing_records (fast_state)',
+  );
+  late final Index processingDeepStatePriorityIdx = Index(
+    'processing_deep_state_priority_idx',
+    'CREATE INDEX processing_deep_state_priority_idx ON processing_records (deep_state, ai_priority)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3246,6 +4131,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     extractedObjects,
     suggestedActions,
     lifecycleEvents,
+    processingRecords,
     screenshotsAssetIdIdx,
     screenshotsLifecycleIdx,
     screenshotsCreatedAtIdx,
@@ -3257,6 +4143,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     actionsObjectIdx,
     lifecycleScreenshotTimeIdx,
     lifecycleTypeIdx,
+    processingFastStateIdx,
+    processingDeepStatePriorityIdx,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3294,6 +4182,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('lifecycle_events', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'screenshots',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('processing_records', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -3413,6 +4308,27 @@ final class $$ScreenshotsTableReferences
 
     final cache = $_typedResult.readTableOrNull(
       _lifecycleEventsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ProcessingRecordsTable, List<ProcessingRecordRow>>
+  _processingRecordsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.processingRecords,
+        aliasName: 'screenshots__id__processing_records__screenshot_id',
+      );
+
+  $$ProcessingRecordsTableProcessedTableManager get processingRecordsRefs {
+    final manager = $$ProcessingRecordsTableTableManager(
+      $_db,
+      $_db.processingRecords,
+    ).filter((f) => f.screenshotId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _processingRecordsRefsTable($_db),
     );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
@@ -3595,6 +4511,31 @@ class $$ScreenshotsTableFilterComposer
           }) => $$LifecycleEventsTableFilterComposer(
             $db: $db,
             $table: $db.lifecycleEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> processingRecordsRefs(
+    Expression<bool> Function($$ProcessingRecordsTableFilterComposer f) f,
+  ) {
+    final $$ProcessingRecordsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.processingRecords,
+      getReferencedColumn: (t) => t.screenshotId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProcessingRecordsTableFilterComposer(
+            $db: $db,
+            $table: $db.processingRecords,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3857,6 +4798,32 @@ class $$ScreenshotsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> processingRecordsRefs<T extends Object>(
+    Expression<T> Function($$ProcessingRecordsTableAnnotationComposer a) f,
+  ) {
+    final $$ProcessingRecordsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.processingRecords,
+          getReferencedColumn: (t) => t.screenshotId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ProcessingRecordsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.processingRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ScreenshotsTableTableManager
@@ -3877,6 +4844,7 @@ class $$ScreenshotsTableTableManager
             bool extractedObjectsRefs,
             bool suggestedActionsRefs,
             bool lifecycleEventsRefs,
+            bool processingRecordsRefs,
           })
         > {
   $$ScreenshotsTableTableManager(_$AppDatabase db, $ScreenshotsTable table)
@@ -3976,6 +4944,7 @@ class $$ScreenshotsTableTableManager
                 extractedObjectsRefs = false,
                 suggestedActionsRefs = false,
                 lifecycleEventsRefs = false,
+                processingRecordsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -3984,6 +4953,7 @@ class $$ScreenshotsTableTableManager
                     if (extractedObjectsRefs) db.extractedObjects,
                     if (suggestedActionsRefs) db.suggestedActions,
                     if (lifecycleEventsRefs) db.lifecycleEvents,
+                    if (processingRecordsRefs) db.processingRecords,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4072,6 +5042,27 @@ class $$ScreenshotsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (processingRecordsRefs)
+                        await $_getPrefetchedData<
+                          ScreenshotRow,
+                          $ScreenshotsTable,
+                          ProcessingRecordRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ScreenshotsTableReferences
+                              ._processingRecordsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ScreenshotsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).processingRecordsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.screenshotId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4097,6 +5088,7 @@ typedef $$ScreenshotsTableProcessedTableManager =
         bool extractedObjectsRefs,
         bool suggestedActionsRefs,
         bool lifecycleEventsRefs,
+        bool processingRecordsRefs,
       })
     >;
 typedef $$EntitiesTableCreateCompanionBuilder = EntitiesCompanion Function({
@@ -5880,6 +6872,527 @@ typedef $$LifecycleEventsTableProcessedTableManager =
       LifecycleEventRow,
       PrefetchHooks Function({bool screenshotId})
     >;
+typedef $$ProcessingRecordsTableCreateCompanionBuilder =
+    ProcessingRecordsCompanion Function({
+      required String screenshotId,
+      required String assetFingerprint,
+      required String fastState,
+      required String deepState,
+      Value<String?> fastFingerprint,
+      Value<String?> deepFingerprint,
+      Value<String?> fastPayloadJson,
+      Value<double> aiPriority,
+      required String aiEligibilityReasonsJson,
+      required String fastTimingsJson,
+      required String deepTimingsJson,
+      Value<int> retryCount,
+      Value<DateTime?> nextRetryAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ProcessingRecordsTableUpdateCompanionBuilder =
+    ProcessingRecordsCompanion Function({
+      Value<String> screenshotId,
+      Value<String> assetFingerprint,
+      Value<String> fastState,
+      Value<String> deepState,
+      Value<String?> fastFingerprint,
+      Value<String?> deepFingerprint,
+      Value<String?> fastPayloadJson,
+      Value<double> aiPriority,
+      Value<String> aiEligibilityReasonsJson,
+      Value<String> fastTimingsJson,
+      Value<String> deepTimingsJson,
+      Value<int> retryCount,
+      Value<DateTime?> nextRetryAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ProcessingRecordsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ProcessingRecordsTable,
+          ProcessingRecordRow
+        > {
+  $$ProcessingRecordsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ScreenshotsTable _screenshotIdTable(_$AppDatabase db) => db
+      .screenshots
+      .createAlias('processing_records__screenshot_id__screenshots__id');
+
+  $$ScreenshotsTableProcessedTableManager get screenshotId {
+    final $_column = $_itemColumn<String>('screenshot_id')!;
+
+    final manager = $$ScreenshotsTableTableManager(
+      $_db,
+      $_db.screenshots,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_screenshotIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ProcessingRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $ProcessingRecordsTable> {
+  $$ProcessingRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get assetFingerprint => $composableBuilder(
+    column: $table.assetFingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fastState => $composableBuilder(
+    column: $table.fastState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deepState => $composableBuilder(
+    column: $table.deepState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fastFingerprint => $composableBuilder(
+    column: $table.fastFingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deepFingerprint => $composableBuilder(
+    column: $table.deepFingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fastPayloadJson => $composableBuilder(
+    column: $table.fastPayloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get aiPriority => $composableBuilder(
+    column: $table.aiPriority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get aiEligibilityReasonsJson => $composableBuilder(
+    column: $table.aiEligibilityReasonsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fastTimingsJson => $composableBuilder(
+    column: $table.fastTimingsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deepTimingsJson => $composableBuilder(
+    column: $table.deepTimingsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ScreenshotsTableFilterComposer get screenshotId {
+    final $$ScreenshotsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenshotId,
+      referencedTable: $db.screenshots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScreenshotsTableFilterComposer(
+            $db: $db,
+            $table: $db.screenshots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProcessingRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProcessingRecordsTable> {
+  $$ProcessingRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get assetFingerprint => $composableBuilder(
+    column: $table.assetFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fastState => $composableBuilder(
+    column: $table.fastState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deepState => $composableBuilder(
+    column: $table.deepState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fastFingerprint => $composableBuilder(
+    column: $table.fastFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deepFingerprint => $composableBuilder(
+    column: $table.deepFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fastPayloadJson => $composableBuilder(
+    column: $table.fastPayloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get aiPriority => $composableBuilder(
+    column: $table.aiPriority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get aiEligibilityReasonsJson => $composableBuilder(
+    column: $table.aiEligibilityReasonsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fastTimingsJson => $composableBuilder(
+    column: $table.fastTimingsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deepTimingsJson => $composableBuilder(
+    column: $table.deepTimingsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ScreenshotsTableOrderingComposer get screenshotId {
+    final $$ScreenshotsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenshotId,
+      referencedTable: $db.screenshots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScreenshotsTableOrderingComposer(
+            $db: $db,
+            $table: $db.screenshots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProcessingRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProcessingRecordsTable> {
+  $$ProcessingRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get assetFingerprint => $composableBuilder(
+    column: $table.assetFingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fastState =>
+      $composableBuilder(column: $table.fastState, builder: (column) => column);
+
+  GeneratedColumn<String> get deepState =>
+      $composableBuilder(column: $table.deepState, builder: (column) => column);
+
+  GeneratedColumn<String> get fastFingerprint => $composableBuilder(
+    column: $table.fastFingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deepFingerprint => $composableBuilder(
+    column: $table.deepFingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fastPayloadJson => $composableBuilder(
+    column: $table.fastPayloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get aiPriority => $composableBuilder(
+    column: $table.aiPriority,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get aiEligibilityReasonsJson => $composableBuilder(
+    column: $table.aiEligibilityReasonsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fastTimingsJson => $composableBuilder(
+    column: $table.fastTimingsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deepTimingsJson => $composableBuilder(
+    column: $table.deepTimingsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+    column: $table.retryCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+    column: $table.nextRetryAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ScreenshotsTableAnnotationComposer get screenshotId {
+    final $$ScreenshotsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenshotId,
+      referencedTable: $db.screenshots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScreenshotsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.screenshots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProcessingRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ProcessingRecordsTable,
+          ProcessingRecordRow,
+          $$ProcessingRecordsTableFilterComposer,
+          $$ProcessingRecordsTableOrderingComposer,
+          $$ProcessingRecordsTableAnnotationComposer,
+          $$ProcessingRecordsTableCreateCompanionBuilder,
+          $$ProcessingRecordsTableUpdateCompanionBuilder,
+          (ProcessingRecordRow, $$ProcessingRecordsTableReferences),
+          ProcessingRecordRow,
+          PrefetchHooks Function({bool screenshotId})
+        > {
+  $$ProcessingRecordsTableTableManager(
+    _$AppDatabase db,
+    $ProcessingRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProcessingRecordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProcessingRecordsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProcessingRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> screenshotId = const Value.absent(),
+                Value<String> assetFingerprint = const Value.absent(),
+                Value<String> fastState = const Value.absent(),
+                Value<String> deepState = const Value.absent(),
+                Value<String?> fastFingerprint = const Value.absent(),
+                Value<String?> deepFingerprint = const Value.absent(),
+                Value<String?> fastPayloadJson = const Value.absent(),
+                Value<double> aiPriority = const Value.absent(),
+                Value<String> aiEligibilityReasonsJson = const Value.absent(),
+                Value<String> fastTimingsJson = const Value.absent(),
+                Value<String> deepTimingsJson = const Value.absent(),
+                Value<int> retryCount = const Value.absent(),
+                Value<DateTime?> nextRetryAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProcessingRecordsCompanion(
+                screenshotId: screenshotId,
+                assetFingerprint: assetFingerprint,
+                fastState: fastState,
+                deepState: deepState,
+                fastFingerprint: fastFingerprint,
+                deepFingerprint: deepFingerprint,
+                fastPayloadJson: fastPayloadJson,
+                aiPriority: aiPriority,
+                aiEligibilityReasonsJson: aiEligibilityReasonsJson,
+                fastTimingsJson: fastTimingsJson,
+                deepTimingsJson: deepTimingsJson,
+                retryCount: retryCount,
+                nextRetryAt: nextRetryAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String screenshotId,
+                required String assetFingerprint,
+                required String fastState,
+                required String deepState,
+                Value<String?> fastFingerprint = const Value.absent(),
+                Value<String?> deepFingerprint = const Value.absent(),
+                Value<String?> fastPayloadJson = const Value.absent(),
+                Value<double> aiPriority = const Value.absent(),
+                required String aiEligibilityReasonsJson,
+                required String fastTimingsJson,
+                required String deepTimingsJson,
+                Value<int> retryCount = const Value.absent(),
+                Value<DateTime?> nextRetryAt = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ProcessingRecordsCompanion.insert(
+                screenshotId: screenshotId,
+                assetFingerprint: assetFingerprint,
+                fastState: fastState,
+                deepState: deepState,
+                fastFingerprint: fastFingerprint,
+                deepFingerprint: deepFingerprint,
+                fastPayloadJson: fastPayloadJson,
+                aiPriority: aiPriority,
+                aiEligibilityReasonsJson: aiEligibilityReasonsJson,
+                fastTimingsJson: fastTimingsJson,
+                deepTimingsJson: deepTimingsJson,
+                retryCount: retryCount,
+                nextRetryAt: nextRetryAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ProcessingRecordsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({screenshotId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (screenshotId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.screenshotId,
+                        referencedTable: $$ProcessingRecordsTableReferences
+                            ._screenshotIdTable(db),
+                        referencedColumn: $$ProcessingRecordsTableReferences
+                            ._screenshotIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ProcessingRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ProcessingRecordsTable,
+      ProcessingRecordRow,
+      $$ProcessingRecordsTableFilterComposer,
+      $$ProcessingRecordsTableOrderingComposer,
+      $$ProcessingRecordsTableAnnotationComposer,
+      $$ProcessingRecordsTableCreateCompanionBuilder,
+      $$ProcessingRecordsTableUpdateCompanionBuilder,
+      (ProcessingRecordRow, $$ProcessingRecordsTableReferences),
+      ProcessingRecordRow,
+      PrefetchHooks Function({bool screenshotId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5894,4 +7407,6 @@ class $AppDatabaseManager {
       $$SuggestedActionsTableTableManager(_db, _db.suggestedActions);
   $$LifecycleEventsTableTableManager get lifecycleEvents =>
       $$LifecycleEventsTableTableManager(_db, _db.lifecycleEvents);
+  $$ProcessingRecordsTableTableManager get processingRecords =>
+      $$ProcessingRecordsTableTableManager(_db, _db.processingRecords);
 }

@@ -7,6 +7,7 @@ import 'package:screenshot_inbox/application/screenshots/lifecycle_refresh_servi
 import 'package:screenshot_inbox/core/debug/debug_fixture_seeder.dart';
 import 'package:screenshot_inbox/domain/inbox/inbox_item.dart';
 import 'package:screenshot_inbox/processing/discovery/screenshot_discovery_coordinator.dart';
+import 'package:screenshot_inbox/processing/scheduling/processing_scheduler.dart';
 
 final debugFixtureSeederProvider = Provider<DebugFixtureSeeder>(
   (ref) => DebugFixtureSeeder(
@@ -148,6 +149,12 @@ final class HomeController extends StateNotifier<AsyncValue<HomeState>> {
   Future<void> refresh() => _discovery.restart();
   void pauseProcessing() => _discovery.pause();
   void resumeProcessing() => _discovery.resume();
+  void setAppExecutionState(AppExecutionState value) =>
+      _discovery.setAppExecutionState(value);
+
+  Future<void> analyzeRemaining() => _discovery.analyzeRemaining();
+
+  Future<int> clearProcessingCache() => _discovery.clearProcessingCache();
 
   Future<void> loadDebugFixtures() async {
     if (!kDebugMode) return;

@@ -39,6 +39,19 @@ final class DebugInspectorPage extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
             children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await ref
+                        .read(discoveryCoordinatorProvider)
+                        .reprocessSelected(screenshotId);
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reprocess screenshot'),
+                ),
+              ),
               const Padding(
                 padding: EdgeInsets.all(12),
                 child: Text(

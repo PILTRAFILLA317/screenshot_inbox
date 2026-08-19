@@ -73,4 +73,64 @@ void main() {
     );
     expect(visited, [1, 2]);
   });
+
+  test('higher priority work runs first', () async {
+    final visited = <int>[];
+    final queue = ProcessingQueue<int>(
+      concurrency: 1,
+      priority: (item) => item.toDouble(),
+      worker: (item) async => visited.add(item),
+    );
+    addTearDown(queue.dispose);
+    queue.pause();
+    queue.enqueueAll([1, 3, 2]);
+    queue.resume();
+    await queue.states.firstWhere(
+      (state) => state.isIdle && state.completed == 3,
+    );
+
+    expect(visited, [3, 2, 1]);
+  });
+
+  test('preserves FIFO order when priorities tie', () async {
+    final visited = <int>[];
+    final queue = ProcessingQueue<int>(
+      concurrency: 1,
+      priority: (_) => 1,
+      worker: (item) async => visited.add(item),
+    );
+    addTearDown(queue.dispose);
+    queue.pause();
+    queue.enqueueAll([7, 3, 9, 1]);
+    queue.resume();
+    await queue.states.firstWhere(
+      (state) => state.isIdle && state.completed == 4,
+    );
+
+    expect(visited, [7, 3, 9, 1]);
+  });
+
+  test('retries with a bound and does not duplicate keyed jobs', () async {
+    var attempts = 0;
+    final queue = ProcessingQueue<int>(
+      concurrency: 1,
+      keyOf: (item) => '$item',
+      maxAttempts: 2,
+      retryDelay: Duration.zero,
+      worker: (item) async {
+        attempts++;
+        if (attempts == 1) throw StateError('transient');
+      },
+    );
+    addTearDown(queue.dispose);
+
+    expect(queue.enqueue(7), isTrue);
+    expect(queue.enqueue(7), isFalse);
+    await queue.states.firstWhere(
+      (state) => state.isIdle && state.completed == 1,
+    );
+
+    expect(attempts, 2);
+    expect(queue.snapshot.retried, 1);
+  });
 }

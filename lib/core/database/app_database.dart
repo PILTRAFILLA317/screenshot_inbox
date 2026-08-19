@@ -116,6 +116,33 @@ class LifecycleEvents extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+@DataClassName('ProcessingRecordRow')
+@TableIndex(name: 'processing_fast_state_idx', columns: {#fastState})
+@TableIndex(
+  name: 'processing_deep_state_priority_idx',
+  columns: {#deepState, #aiPriority},
+)
+class ProcessingRecords extends Table {
+  TextColumn get screenshotId =>
+      text().references(Screenshots, #id, onDelete: KeyAction.cascade)();
+  TextColumn get assetFingerprint => text()();
+  TextColumn get fastState => text()();
+  TextColumn get deepState => text()();
+  TextColumn get fastFingerprint => text().nullable()();
+  TextColumn get deepFingerprint => text().nullable()();
+  TextColumn get fastPayloadJson => text().nullable()();
+  RealColumn get aiPriority => real().withDefault(const Constant(0))();
+  TextColumn get aiEligibilityReasonsJson => text()();
+  TextColumn get fastTimingsJson => text()();
+  TextColumn get deepTimingsJson => text()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {screenshotId};
+}
+
 @DriftDatabase(
   tables: [
     Screenshots,
@@ -123,6 +150,7 @@ class LifecycleEvents extends Table {
     ExtractedObjects,
     SuggestedActions,
     LifecycleEvents,
+    ProcessingRecords,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -130,7 +158,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'screenshot_inbox'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -138,6 +166,9 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (migrator, from, to) async {
       if (from < 2) {
         await migrator.addColumn(screenshots, screenshots.processingVersion);
+      }
+      if (from < 3) {
+        await migrator.createTable(processingRecords);
       }
     },
     beforeOpen: (details) async {

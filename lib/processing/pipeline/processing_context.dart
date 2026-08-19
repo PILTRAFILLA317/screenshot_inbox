@@ -27,6 +27,7 @@ final class ProcessingContext {
   final ClassificationResult? classification;
 
   ProcessingContext copyWith({
+    Uint8List? imageBytes,
     RecognizedText? recognizedText,
     OcrEvidenceAnalysis? ocrAnalysis,
     List<RecognizedBarcode>? barcodes,
@@ -35,7 +36,7 @@ final class ProcessingContext {
   }) {
     return ProcessingContext(
       screenshot: screenshot,
-      imageBytes: imageBytes,
+      imageBytes: imageBytes ?? this.imageBytes,
       recognizedText: recognizedText ?? this.recognizedText,
       ocrAnalysis: ocrAnalysis ?? this.ocrAnalysis,
       barcodes: barcodes ?? this.barcodes,

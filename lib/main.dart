@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:screenshot_inbox/app/app.dart';
+import 'package:screenshot_inbox/processing/background/background_processing.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const ProviderScope(child: ScreenshotInboxApp()));
+  unawaited(initializeBackgroundProcessing());
 }

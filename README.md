@@ -19,11 +19,14 @@ The app now executes the complete local loop on iOS and Android:
 1. Onboarding requests Photos access and later launches skip onboarding while
    access remains available.
 2. Screenshot albums are read in bounded metadata batches, newest first.
-3. A two-worker, pausable queue loads one reduced processing image per job.
-4. ML Kit produces domain-owned OCR blocks/lines/bounds and normalized barcode
+3. Separate priority queues run Fast Scan at configurable concurrency `2` and
+   Deep Analysis at conservative concurrency `1`. They can pause, resume,
+   cancel pending work, retry transient failures, and isolate failed items.
+4. Fast Scan uses a dedicated 1800 px image. ML Kit produces domain-owned OCR blocks/lines/bounds and normalized barcode
    payloads. Missing confidence remains `null`.
 5. English/Spanish extraction and type-specific parsers produce deterministic
-   candidates. Supported actionable types can then use on-device intelligence;
+   candidates. An explainable eligibility policy and centralized priority decide
+   whether supported candidates enter on-device intelligence;
    deterministic validation, action policies, lifecycle policies, and priority
    ranking persist the resolved result in Drift.
 6. Home updates progressively and surfaces Need Action, Expiring, Cleanup, and
@@ -32,8 +35,9 @@ The app now executes the complete local loop on iOS and Android:
    explicit native-confirmed deletion.
 8. Saved places/products remain in Library even after their source screenshot is
    marked deleted.
-9. Later launches reevaluate temporal lifecycle state without rerunning OCR and
-   only queue new or interrupted screenshot assets.
+9. Later launches reevaluate temporal lifecycle state without rerunning OCR,
+   restore Fast/Deep state from stage fingerprints, and only queue new, changed,
+   interrupted, or explicitly invalidated work.
 
 Implemented parsers are `EventParser`, `CouponParser`,
 `ConversationTaskParser`, `OrderParser`, `ProductParser`, and `PlaceParser`,
@@ -71,9 +75,11 @@ Important boundaries:
 - `core/debug/debug_fixture_seeder.dart` remains guarded by `kDebugMode` for
   local development fixtures.
 
-The Drift schema is at version 2 and contains `screenshots`, `entities`,
+The Drift schema is at version 3 and contains `screenshots`, `entities`,
 `extracted_objects`, `suggested_actions`, and `lifecycle_events`, with foreign
 keys, cascading deletion, indexes, and JSON text columns for variable payloads.
+`processing_records` persists stage state, fingerprints, lightweight OCR cache,
+priority, retry metadata, and local timings without storing image blobs.
 
 ## Adding a parser
 
@@ -166,8 +172,9 @@ in [`docs/LOCAL_AI_TESTING.md`](docs/LOCAL_AI_TESTING.md).
 - Reminder uses local notifications rather than EventKit/Android task providers.
 - Search is a replaceable local scan, not FTS5 yet. Large result sets should move
   to indexed pagination in the next database phase.
-- Processing runs while the app is alive; OS background execution is out of
-  scope for this MVP.
+- Constrained WorkManager/BGProcessing wakes can Fast Scan a bounded historical
+  batch. Deep local AI remains foreground-only because headless custom model
+  bridges are not assumed to be available.
 - Android screenshot discovery still needs physical fixtures for OEM-specific
   and localized album names. An ambiguous empty inventory never mass-marks
   stored rows as deleted.
@@ -177,7 +184,10 @@ in [`docs/LOCAL_AI_TESTING.md`](docs/LOCAL_AI_TESTING.md).
   scheme declarations should stay limited to intentionally supported apps.
 - The current reminder adapter uses inexact Android scheduling to avoid the
   restricted exact-alarm permission.
-- Evaluate FTS5, paginated inbox queries, background task constraints, broader
+- Evaluate FTS5, paginated inbox queries, broader
   locale/date parsing, and native reminder providers next. Cloud AI, sync,
   subscriptions, ads, embeddings, carrier APIs, widgets, App Intents, and Share
   Extensions remain intentionally out of scope.
+
+Detailed performance behavior and the physical-device checklist are in
+[`docs/PERFORMANCE_PROCESSING.md`](docs/PERFORMANCE_PROCESSING.md).

@@ -99,6 +99,7 @@ final class IntelligenceEnricher {
         () => provider.interpret(request).timeout(timeout),
       );
       invocationWatch.stop();
+      final validationWatch = Stopwatch()..start();
       final validations = <ValidatedInterpretation>[];
       for (var index = 0; index < result.interpretations.length; index++) {
         final candidate = base.length > index ? base[index] : base.first;
@@ -110,6 +111,7 @@ final class IntelligenceEnricher {
           ),
         );
       }
+      validationWatch.stop();
       final invalidResult =
           result.interpretations.isNotEmpty &&
           validations.every(
@@ -128,6 +130,7 @@ final class IntelligenceEnricher {
             reason: 'invalidResult',
             durationMs: invocationWatch.elapsedMilliseconds,
             validations: validations,
+            validationDurationMs: validationWatch.elapsedMilliseconds,
           ),
         );
       }
@@ -143,6 +146,7 @@ final class IntelligenceEnricher {
           resultStatus: 'success',
           durationMs: invocationWatch.elapsedMilliseconds,
           validations: validations,
+          validationDurationMs: validationWatch.elapsedMilliseconds,
         ),
       );
     } catch (error) {
@@ -215,6 +219,7 @@ final class IntelligenceEnricher {
     List<ExtractedObject> objects,
   ) => IntelligenceRequest(
     typeHint: context.classification?.type.value,
+    schemaHint: _schemaFor(context.classification?.type.value),
     screenshotCapturedAt: context.screenshot.createdAt,
     currentTime: clock.now(),
     locale: _locale(),
@@ -271,6 +276,7 @@ final class IntelligenceEnricher {
     required String resultStatus,
     required int durationMs,
     required List<ValidatedInterpretation> validations,
+    required int validationDurationMs,
     String? reason,
   }) => {
     'policy': policy.name,
@@ -287,12 +293,22 @@ final class IntelligenceEnricher {
     'durationMs': result.duration.inMilliseconds > 0
         ? result.duration.inMilliseconds
         : durationMs,
+    'validationDurationMs': validationDurationMs,
     'result': resultStatus,
     'reason': ?reason,
     'rawStructuredResult': result.toJson(),
     'validation': validations
         .map((item) => item.toJson())
         .toList(growable: false),
+  };
+
+  static String _schemaFor(String? type) => switch (type) {
+    'event' => 'event',
+    'place' => 'place',
+    'product' || 'order' => 'commerce',
+    'coupon' => 'coupon',
+    'conversationTask' => 'conversationTask',
+    _ => 'general',
   };
 
   static double? _blockConfidence(List<dynamic> lines) {

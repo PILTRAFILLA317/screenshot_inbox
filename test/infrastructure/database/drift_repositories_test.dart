@@ -9,6 +9,9 @@ import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
 import 'package:screenshot_inbox/infrastructure/database/drift_repositories.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
+import 'package:screenshot_inbox/processing/pipeline/fast_scan_result.dart';
+import 'package:screenshot_inbox/processing/performance/processing_metrics.dart';
+import 'package:screenshot_inbox/processing/eligibility/ai_eligibility_policy.dart';
 import 'package:screenshot_inbox/processing/priority/priority_engine.dart';
 
 import '../../support/fixtures.dart';
@@ -245,4 +248,45 @@ void main() {
       expect(persisted.saved, isTrue);
     },
   );
+
+  test('processing records survive restart without duplicate jobs', () async {
+    final screenshot = screenshotFixture();
+    final store = DriftProcessingStore(database);
+    await screenshots.save(screenshot);
+    final record = ProcessingRecord(
+      screenshotId: screenshot.id,
+      assetFingerprint: 'asset-fingerprint',
+      fastState: FastScanState.completed,
+      deepState: DeepAnalysisState.queued,
+      fastFingerprint: 'fast-v1',
+      fastPayload: const {
+        'recognizedText': {'fullText': '', 'blocks': <Object?>[]},
+        'barcodes': <Object?>[],
+        'classification': {
+          'type': 'reference',
+          'confidence': 0.8,
+          'reasons': <Object?>[],
+        },
+      },
+      aiPriority: 42,
+      aiEligibilityReasons: const [AIEligibilityReason.actionableType],
+      fastTimings: const ProcessingTimings(values: {'ocrMs': 12}),
+      updatedAt: screenshot.createdAt,
+    );
+    await store.saveProcessingRecord(record);
+
+    final restored = await store.findProcessingRecord(screenshot.id);
+    await store.saveProcessingRecord(
+      record.copyWith(updatedAt: DateTime.now()),
+    );
+    final all = await store.findProcessingRecords([
+      screenshot.id,
+      screenshot.id,
+    ]);
+
+    expect(restored?.deepState, DeepAnalysisState.queued);
+    expect(restored?.aiPriority, 42);
+    expect(restored?.fastTimings['ocrMs'], 12);
+    expect(all, hasLength(1));
+  });
 }

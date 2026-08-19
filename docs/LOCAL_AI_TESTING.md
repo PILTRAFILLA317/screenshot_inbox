@@ -21,8 +21,9 @@ Nano must be verified on physical devices.
 7. Use the realistic fixtures in `test/fixtures/benchmark/corpus.json`. Do not
    treat unit-test fakes as model-quality measurements.
 
-The debug policy defaults to `alwaysForSupportedTypes`. Override it without a
-code change with a Dart define:
+The debug policy now defaults to `actionableTypes`; the separate Fast Scan
+eligibility policy prevents indiscriminate deep analysis. Override the provider
+policy without a code change with a Dart define:
 
 ```sh
 flutter run --dart-define=INTELLIGENCE_USAGE_POLICY=disabled

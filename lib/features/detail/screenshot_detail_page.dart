@@ -73,8 +73,6 @@ final class _DetailBody extends ConsumerWidget {
         _ScreenshotPreview(
           assetId: item.screenshot.assetId,
           semanticLabel: 'Original screenshot for ${item.title}',
-          sourceWidth: item.screenshot.width,
-          sourceHeight: item.screenshot.height,
         ),
         const SizedBox(height: 26),
         Row(
@@ -250,31 +248,23 @@ final class _ScreenshotPreview extends ConsumerWidget {
   const _ScreenshotPreview({
     required this.assetId,
     required this.semanticLabel,
-    required this.sourceWidth,
-    required this.sourceHeight,
   });
 
   final String assetId;
   final String semanticLabel;
-  final int sourceWidth;
-  final int sourceHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final preview = ref.watch(screenshotPreviewProvider(assetId));
     final bytes = preview.asData?.value;
     final canOpen = bytes != null && bytes.isNotEmpty;
-    final sourceAspectRatio = sourceWidth > 0 && sourceHeight > 0
-        ? sourceWidth / sourceHeight
-        : 9 / 19.5;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportHeight = MediaQuery.sizeOf(context).height;
-        final desiredHeight = constraints.maxWidth / sourceAspectRatio;
         final previewHeight = math.min(
-          desiredHeight,
-          math.max(320.0, viewportHeight * 0.62),
+          280.0,
+          math.max(220.0, viewportHeight * 0.32),
         );
         final decodeWidth =
             (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
@@ -303,7 +293,8 @@ final class _ScreenshotPreview extends ConsumerWidget {
                             ? const _UnavailablePreview()
                             : Image.memory(
                                 value,
-                                fit: BoxFit.contain,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter,
                                 filterQuality: FilterQuality.high,
                                 gaplessPlayback: true,
                                 excludeFromSemantics: true,
@@ -858,7 +849,7 @@ final class _DetailSkeleton extends StatelessWidget {
       children: [
         SizedBox(
           width: double.infinity,
-          height: 420,
+          height: 260,
           child: ColoredBox(color: Color(0xFFEDEDED)),
         ),
         SizedBox(height: 26),

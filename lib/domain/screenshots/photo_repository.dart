@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
+
 enum PhotoPermissionState {
   notDetermined,
   restricted,
@@ -30,6 +32,22 @@ final class PhotoAsset {
   final int? sizeBytes;
 }
 
+final class ProcessingImageLoad {
+  const ProcessingImageLoad({
+    required this.bytes,
+    required this.width,
+    required this.height,
+    required this.assetLoadingDuration,
+    required this.generationDuration,
+  });
+
+  final Uint8List bytes;
+  final int width;
+  final int height;
+  final Duration assetLoadingDuration;
+  final Duration generationDuration;
+}
+
 abstract interface class PhotoRepository {
   Future<PhotoPermissionState> currentPermission();
 
@@ -45,7 +63,10 @@ abstract interface class PhotoRepository {
 
   Future<Uint8List?> getThumbnail(String assetId);
 
-  Future<Uint8List?> getProcessingImage(String assetId);
+  Future<ProcessingImageLoad?> getProcessingImage(
+    String assetId, {
+    ProcessingImagePurpose purpose = ProcessingImagePurpose.ocr,
+  });
 
   /// Returns the asset IDs actually deleted after native confirmation.
   Future<Set<String>> deleteAssets(List<String> assetIds);

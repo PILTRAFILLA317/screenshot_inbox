@@ -3,6 +3,7 @@ import 'package:screenshot_inbox/domain/extraction/entity.dart';
 import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
+import 'package:screenshot_inbox/processing/pipeline/fast_scan_result.dart';
 
 final class ProcessingResult {
   const ProcessingResult({
@@ -24,6 +25,27 @@ abstract interface class ProcessingStore {
   Future<void> markProcessing(Screenshot screenshot, DateTime at);
 
   Future<void> persist(ProcessingResult result);
+
+  Future<ProcessingRecord?> findProcessingRecord(String screenshotId);
+
+  Future<Map<String, ProcessingRecord>> findProcessingRecords(
+    Iterable<String> screenshotIds,
+  );
+
+  Future<void> saveProcessingRecord(ProcessingRecord record);
+
+  Future<void> persistFastScan(FastScanResult result, ProcessingRecord record);
+
+  Future<FastScanResult?> loadFastScan(
+    Screenshot screenshot,
+    ProcessingRecord record,
+  );
+
+  Future<ProcessingCacheStats> processingStats();
+
+  Future<int> clearProcessingCache();
+
+  Future<void> clearProcessingCacheFor(String screenshotId);
 
   Future<void> markFailed(Screenshot screenshot, DateTime at, Object error);
 }

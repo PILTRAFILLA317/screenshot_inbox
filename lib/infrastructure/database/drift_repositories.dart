@@ -17,6 +17,9 @@ import 'package:screenshot_inbox/domain/screenshots/screenshot.dart' as domain;
 import 'package:screenshot_inbox/domain/screenshots/screenshot_repository.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot_type.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
+import 'package:screenshot_inbox/processing/pipeline/fast_scan_result.dart';
+import 'package:screenshot_inbox/processing/performance/processing_metrics.dart';
+import 'package:screenshot_inbox/processing/eligibility/ai_eligibility_policy.dart';
 import 'package:screenshot_inbox/processing/priority/priority_engine.dart';
 
 final class DriftScreenshotRepository implements ScreenshotRepository {
@@ -436,6 +439,119 @@ final class DriftProcessingStore implements ProcessingStore {
   });
 
   @override
+  Future<ProcessingRecord?> findProcessingRecord(String screenshotId) async {
+    final row =
+        await (_db.select(_db.processingRecords)
+              ..where((table) => table.screenshotId.equals(screenshotId)))
+            .getSingleOrNull();
+    return row == null ? null : _processingRecordFromRow(row);
+  }
+
+  @override
+  Future<Map<String, ProcessingRecord>> findProcessingRecords(
+    Iterable<String> screenshotIds,
+  ) async {
+    final ids = screenshotIds.toSet();
+    if (ids.isEmpty) return const {};
+    final rows = await (_db.select(
+      _db.processingRecords,
+    )..where((table) => table.screenshotId.isIn(ids))).get();
+    return {
+      for (final row in rows) row.screenshotId: _processingRecordFromRow(row),
+    };
+  }
+
+  @override
+  Future<void> saveProcessingRecord(ProcessingRecord record) => _db
+      .into(_db.processingRecords)
+      .insertOnConflictUpdate(_processingRecordCompanion(record));
+
+  @override
+  Future<void> persistFastScan(
+    FastScanResult result,
+    ProcessingRecord record,
+  ) => _db.transaction(() async {
+    final existingRows = await (_db.select(
+      _db.extractedObjects,
+    )..where((table) => table.screenshotId.equals(result.screenshot.id))).get();
+    final objects = _preserveUserConfirmed(
+      existingRows.map(_objectFromRow).toList(growable: false),
+      result.deterministic.objects,
+    );
+    await _saveScreenshot(_db, result.screenshot);
+    await _replaceEntities(_db, result.screenshot.id, result.context.entities);
+    await _replaceObjects(_db, result.screenshot.id, objects);
+    // Provisional deterministic objects must not retain actions from an older
+    // deep interpretation.
+    await _replaceActions(_db, result.screenshot.id, const []);
+    await _db
+        .into(_db.processingRecords)
+        .insertOnConflictUpdate(_processingRecordCompanion(record));
+  });
+
+  @override
+  Future<FastScanResult?> loadFastScan(
+    domain.Screenshot screenshot,
+    ProcessingRecord record,
+  ) async {
+    final payload = record.fastPayload;
+    if (payload == null) return null;
+    final entityRows = await (_db.select(
+      _db.entities,
+    )..where((table) => table.screenshotId.equals(screenshot.id))).get();
+    final objectRows = await (_db.select(
+      _db.extractedObjects,
+    )..where((table) => table.screenshotId.equals(screenshot.id))).get();
+    return FastScanResult.fromCache(
+      screenshot: screenshot,
+      payload: payload,
+      entities: entityRows.map(_entityFromRow).toList(growable: false),
+      objects: objectRows.map(_objectFromRow).toList(growable: false),
+      record: record,
+    );
+  }
+
+  @override
+  Future<ProcessingCacheStats> processingStats() async {
+    final rows = await _db.select(_db.processingRecords).get();
+    return ProcessingCacheStats(
+      total: rows.length,
+      fastScanned: rows
+          .where((row) => row.fastState == FastScanState.completed.name)
+          .length,
+      deepAnalyzed: rows
+          .where((row) => row.deepState == DeepAnalysisState.completed.name)
+          .length,
+      queued: rows
+          .where(
+            (row) =>
+                row.deepState == DeepAnalysisState.queued.name ||
+                row.fastState == FastScanState.pending.name,
+          )
+          .length,
+      deferred: rows
+          .where((row) => row.deepState == DeepAnalysisState.deferred.name)
+          .length,
+      failed: rows
+          .where(
+            (row) =>
+                row.deepState == DeepAnalysisState.failed.name ||
+                row.fastState == FastScanState.failed.name,
+          )
+          .length,
+    );
+  }
+
+  @override
+  Future<int> clearProcessingCache() async =>
+      _db.transaction(() => _db.delete(_db.processingRecords).go());
+
+  @override
+  Future<void> clearProcessingCacheFor(String screenshotId) => (_db.delete(
+    _db.processingRecords,
+  )..where((table) => table.screenshotId.equals(screenshotId))).go();
+
+  @override
   Future<void> markFailed(
     domain.Screenshot screenshot,
     DateTime at,
@@ -446,6 +562,61 @@ final class DriftProcessingStore implements ProcessingStore {
       processingStatus: domain.ScreenshotProcessingStatus.failed,
       lastProcessedAt: at,
     ),
+  );
+}
+
+ProcessingRecordsCompanion _processingRecordCompanion(
+  ProcessingRecord record,
+) => ProcessingRecordsCompanion.insert(
+  screenshotId: record.screenshotId,
+  assetFingerprint: record.assetFingerprint,
+  fastState: record.fastState.name,
+  deepState: record.deepState.name,
+  fastFingerprint: Value(record.fastFingerprint),
+  deepFingerprint: Value(record.deepFingerprint),
+  fastPayloadJson: Value(
+    record.fastPayload == null ? null : jsonEncode(record.fastPayload),
+  ),
+  aiPriority: Value(record.aiPriority),
+  aiEligibilityReasonsJson: jsonEncode(
+    record.aiEligibilityReasons.map((reason) => reason.name).toList(),
+  ),
+  fastTimingsJson: jsonEncode(record.fastTimings.toJson()),
+  deepTimingsJson: jsonEncode(record.deepTimings.toJson()),
+  retryCount: Value(record.retryCount),
+  nextRetryAt: Value(record.nextRetryAt),
+  updatedAt: record.updatedAt,
+);
+
+ProcessingRecord _processingRecordFromRow(
+  ProcessingRecordRow row,
+) => ProcessingRecord(
+  screenshotId: row.screenshotId,
+  assetFingerprint: row.assetFingerprint,
+  fastState: FastScanState.values.byName(row.fastState),
+  deepState: DeepAnalysisState.values.byName(row.deepState),
+  fastFingerprint: row.fastFingerprint,
+  deepFingerprint: row.deepFingerprint,
+  fastPayload: row.fastPayloadJson == null
+      ? null
+      : _decodeJson(row.fastPayloadJson!),
+  aiPriority: row.aiPriority,
+  aiEligibilityReasons: (jsonDecode(row.aiEligibilityReasonsJson) as List)
+      .whereType<String>()
+      .map(AIEligibilityReason.values.byName)
+      .toList(growable: false),
+  fastTimings: ProcessingTimings(values: _decodeIntMap(row.fastTimingsJson)),
+  deepTimings: ProcessingTimings(values: _decodeIntMap(row.deepTimingsJson)),
+  retryCount: row.retryCount,
+  nextRetryAt: row.nextRetryAt,
+  updatedAt: row.updatedAt,
+);
+
+Map<String, int> _decodeIntMap(String source) {
+  final value = jsonDecode(source);
+  if (value is! Map) return const {};
+  return value.map(
+    (key, value) => MapEntry(key.toString(), (value as num).round()),
   );
 }
 

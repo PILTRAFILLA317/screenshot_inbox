@@ -34,8 +34,10 @@ import 'package:screenshot_inbox/processing/actions/default_action_policies.dart
 import 'package:screenshot_inbox/processing/classification/classification.dart';
 import 'package:screenshot_inbox/processing/discovery/screenshot_discovery_coordinator.dart';
 import 'package:screenshot_inbox/processing/entities/entity_extractor.dart';
+import 'package:screenshot_inbox/processing/eligibility/ai_eligibility_policy.dart';
 import 'package:screenshot_inbox/processing/intelligence/intelligence_enricher.dart';
 import 'package:screenshot_inbox/processing/intelligence/interpretation_validator.dart';
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
 import 'package:screenshot_inbox/processing/lifecycle/default_lifecycle_policies.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_engine.dart';
 import 'package:screenshot_inbox/processing/lifecycle/lifecycle_policy_registry.dart';
@@ -45,7 +47,10 @@ import 'package:screenshot_inbox/processing/parsers/default_screenshot_parsers.d
 import 'package:screenshot_inbox/processing/parsers/parser_registry.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
 import 'package:screenshot_inbox/processing/pipeline/screenshot_processing_pipeline.dart';
+import 'package:screenshot_inbox/processing/performance/processing_metrics.dart';
+import 'package:screenshot_inbox/processing/priority/ai_processing_priority.dart';
 import 'package:screenshot_inbox/processing/priority/priority_engine.dart';
+import 'package:screenshot_inbox/processing/scheduling/processing_scheduler.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase();
@@ -135,11 +140,36 @@ final intelligenceUsagePolicyProvider = Provider<IntelligenceUsagePolicy>((
             .firstOrNull ??
         IntelligenceUsagePolicy.actionableTypes;
   }
-  const release = bool.fromEnvironment('dart.vm.product');
-  return release
-      ? IntelligenceUsagePolicy.actionableTypes
-      : IntelligenceUsagePolicy.alwaysForSupportedTypes;
+  return IntelligenceUsagePolicy.actionableTypes;
 });
+
+final processingMetricsProvider = Provider<ProcessingMetricsCollector>(
+  (ref) => ProcessingMetricsCollector(),
+);
+
+final aiEligibilityPolicyProvider = Provider<AIEligibilityPolicy>((ref) {
+  final policy = ref.watch(intelligenceUsagePolicyProvider);
+  return DefaultAIEligibilityPolicy(
+    mode: policy == IntelligenceUsagePolicy.alwaysForSupportedTypes
+        ? AIEligibilityMode.allSupported
+        : policy == IntelligenceUsagePolicy.disabled
+        ? AIEligibilityMode.disabled
+        : AIEligibilityMode.selective,
+  );
+});
+
+final aiProcessingPriorityProvider = Provider<AIProcessingPriorityPolicy>(
+  (ref) => AIProcessingPriorityPolicy(ref.watch(clockProvider)),
+);
+
+final deviceResourceMonitorProvider = Provider<DeviceResourceMonitor>(
+  (ref) => const PlatformDeviceResourceMonitor(),
+);
+
+final processingSchedulerProvider = Provider<ProcessingScheduler>(
+  (ref) =>
+      ProcessingScheduler(resources: ref.watch(deviceResourceMonitorProvider)),
+);
 
 final intelligenceProvider = Provider<IntelligenceProvider>(
   (ref) => const LocalIntelligenceProvider(),
@@ -226,6 +256,9 @@ final processingPipelineProvider = Provider<ScreenshotProcessingPipeline>(
     store: ref.watch(processingStoreProvider),
     clock: ref.watch(clockProvider),
     ids: ref.watch(idGeneratorProvider),
+    aiEligibility: ref.watch(aiEligibilityPolicyProvider),
+    aiPriority: ref.watch(aiProcessingPriorityProvider),
+    metrics: ref.watch(processingMetricsProvider),
     intelligence: ref.watch(intelligenceEnricherProvider),
     existingObjects: ref.watch(extractedObjectRepositoryProvider),
   ),
@@ -238,6 +271,9 @@ final discoveryCoordinatorProvider = Provider<ScreenshotDiscoveryCoordinator>((
     photos: ref.watch(photoRepositoryProvider),
     screenshots: ref.watch(screenshotRepositoryProvider),
     pipeline: ref.watch(processingPipelineProvider),
+    store: ref.watch(processingStoreProvider),
+    scheduler: ref.watch(processingSchedulerProvider),
+    metrics: ref.watch(processingMetricsProvider),
     clock: ref.watch(clockProvider),
     ids: ref.watch(idGeneratorProvider),
   );
@@ -306,8 +342,14 @@ final thumbnailProvider = FutureProvider.autoDispose.family<Uint8List?, String>(
 
 final screenshotPreviewProvider = FutureProvider.autoDispose
     .family<Uint8List?, String>(
-      (ref, assetId) =>
-          ref.watch(photoRepositoryProvider).getProcessingImage(assetId),
+      (ref, assetId) async =>
+          (await ref
+                  .watch(photoRepositoryProvider)
+                  .getProcessingImage(
+                    assetId,
+                    purpose: ProcessingImagePurpose.localAI,
+                  ))
+              ?.bytes,
     );
 
 final currentPhotoPermissionProvider = FutureProvider<PhotoPermissionState>(

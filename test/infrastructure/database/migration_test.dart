@@ -6,7 +6,7 @@ import 'package:screenshot_inbox/core/database/app_database.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 void main() {
-  test('migrates schema v1 by adding processing_version', () async {
+  test('migrates schema v1 through processing records', () async {
     final directory = await Directory.systemTemp.createTemp(
       'screenshot_inbox_migration_',
     );
@@ -46,7 +46,14 @@ void main() {
         columns.map((row) => row.read<String>('name')),
         contains('processing_version'),
       );
-      expect(version.read<int>('user_version'), 2);
+      final tables = await database
+          .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .get();
+      expect(
+        tables.map((row) => row.read<String>('name')),
+        contains('processing_records'),
+      );
+      expect(version.read<int>('user_version'), 3);
     } finally {
       await database.close();
       await directory.delete(recursive: true);

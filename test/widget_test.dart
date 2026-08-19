@@ -9,6 +9,7 @@ import 'package:screenshot_inbox/app/providers.dart';
 import 'package:screenshot_inbox/app/router.dart';
 import 'package:screenshot_inbox/core/database/app_database.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
 
 void main() {
   testWidgets('onboarding explains local processing', (tester) async {
@@ -64,7 +65,10 @@ final class _EmptyPhotoRepository implements PhotoRepository {
   Future<void> openSettings() async {}
 
   @override
-  Future<Uint8List?> getProcessingImage(String assetId) async => null;
+  Future<ProcessingImageLoad?> getProcessingImage(
+    String assetId, {
+    ProcessingImagePurpose purpose = ProcessingImagePurpose.ocr,
+  }) async => null;
 
   @override
   Future<List<PhotoAsset>> getScreenshots({

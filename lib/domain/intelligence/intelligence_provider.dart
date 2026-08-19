@@ -101,10 +101,12 @@ final class IntelligenceRequest {
     required this.imageWidth,
     required this.imageHeight,
     this.typeHint,
+    this.schemaHint = 'general',
     this.interpretationVersion = 1,
   });
 
   final String? typeHint;
+  final String schemaHint;
   final DateTime screenshotCapturedAt;
   final DateTime currentTime;
   final String locale;
@@ -119,6 +121,7 @@ final class IntelligenceRequest {
 
   JsonMap toJson() => {
     'typeHint': ?typeHint,
+    'schemaHint': schemaHint,
     'screenshotCapturedAt': screenshotCapturedAt.toIso8601String(),
     'currentTime': currentTime.toIso8601String(),
     'locale': locale,

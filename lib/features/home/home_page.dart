@@ -7,10 +7,13 @@ import 'package:screenshot_inbox/app/theme/app_theme.dart';
 import 'package:screenshot_inbox/domain/inbox/inbox_item.dart';
 import 'package:screenshot_inbox/features/detail/screenshot_detail_page.dart';
 import 'package:screenshot_inbox/features/home/home_controller.dart';
+import 'package:screenshot_inbox/features/home/processing_debug_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:screenshot_inbox/features/inbox/inbox_list_page.dart';
 import 'package:screenshot_inbox/features/search/search_page.dart';
 import 'package:screenshot_inbox/features/shared/inbox_item_tile.dart';
 import 'package:screenshot_inbox/processing/discovery/screenshot_discovery_coordinator.dart';
+import 'package:screenshot_inbox/processing/scheduling/processing_scheduler.dart';
 
 final class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -36,9 +39,13 @@ final class _HomePageState extends ConsumerState<HomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      ref.read(homeControllerProvider.notifier).resumeProcessing();
+      final controller = ref.read(homeControllerProvider.notifier);
+      controller.setAppExecutionState(AppExecutionState.foreground);
+      controller.resumeProcessing();
     } else if (state == AppLifecycleState.paused) {
-      ref.read(homeControllerProvider.notifier).pauseProcessing();
+      final controller = ref.read(homeControllerProvider.notifier);
+      controller.setAppExecutionState(AppExecutionState.background);
+      controller.pauseProcessing();
     }
   }
 
@@ -78,6 +85,34 @@ final class _HomePageState extends ConsumerState<HomePage>
                             _openList('Library', const InboxQuery.library()),
                         icon: const Icon(Icons.bookmarks_outlined),
                       ),
+                      PopupMenuButton<String>(
+                        tooltip: 'More options',
+                        onSelected: (value) {
+                          if (value == 'analyzeRemaining') {
+                            unawaited(
+                              ref
+                                  .read(homeControllerProvider.notifier)
+                                  .analyzeRemaining(),
+                            );
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'analyzeRemaining',
+                            child: Text('Analyze older screenshots'),
+                          ),
+                        ],
+                      ),
+                      if (kDebugMode)
+                        IconButton(
+                          tooltip: 'Processing debug',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ProcessingDebugPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.speed),
+                        ),
                     ],
                   ),
                 ),
@@ -205,8 +240,8 @@ final class _DiscoveryStatus extends ConsumerWidget {
         ? 'Could not finish the scan'
         : 'Analyzing on this device…';
     final detail = state.hasLimitedAccess
-        ? 'Limited Photos access · ${state.processed} processed, ${state.pending + state.active} remaining'
-        : '${state.processed} processed · ${state.pending + state.active} remaining';
+        ? 'Limited Photos access · ${state.fastScanned} fast scanned · ${state.pending + state.active} active'
+        : '${state.fastScanned} fast scanned · ${state.deepAnalyzed} deeply analyzed · ${state.deferred} deferred';
     return Semantics(
       liveRegion: true,
       label: '$title. $detail',

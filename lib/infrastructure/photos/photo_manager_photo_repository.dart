@@ -3,13 +3,18 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:photo_manager/photo_manager.dart';
+import 'package:screenshot_inbox/core/debug/local_debug_log.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
 
 final class PhotoManagerPhotoRepository implements PhotoRepository {
-  const PhotoManagerPhotoRepository();
+  const PhotoManagerPhotoRepository({
+    this.imagePolicy = const ProcessingImagePolicy(),
+  });
+
+  final ProcessingImagePolicy imagePolicy;
 
   static const _pageSize = 200;
-  static const _processingMaxDimension = 2400;
 
   @override
   Future<PhotoPermissionState> currentPermission() async {
@@ -139,24 +144,56 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
 
   @override
   Future<Uint8List?> getThumbnail(String assetId) async {
+    final watch = Stopwatch()..start();
     final asset = await AssetEntity.fromId(assetId);
     if (asset == null) return null;
-    return asset.thumbnailDataWithSize(
-      _boundedSize(asset.width, asset.height, maxDimension: 512),
+    final spec = imagePolicy.thumbnail;
+    final bytes = await asset.thumbnailDataWithSize(
+      _boundedSize(asset.width, asset.height, maxDimension: spec.maxDimension),
       format: ThumbnailFormat.jpeg,
-      quality: 88,
+      quality: spec.jpegQuality,
     );
+    watch.stop();
+    LocalDebugLog.event(
+      'processing.thumbnail.loaded',
+      metadata: {
+        'assetId': assetId,
+        'thumbnailLoadingMs': watch.elapsedMilliseconds,
+        'encodedBytes': bytes?.length ?? 0,
+      },
+    );
+    return bytes;
   }
 
   @override
-  Future<Uint8List?> getProcessingImage(String assetId) async {
+  Future<ProcessingImageLoad?> getProcessingImage(
+    String assetId, {
+    ProcessingImagePurpose purpose = ProcessingImagePurpose.ocr,
+  }) async {
+    final assetWatch = Stopwatch()..start();
     final asset = await AssetEntity.fromId(assetId);
+    assetWatch.stop();
     if (asset == null) return null;
-    final size = _boundedSize(asset.width, asset.height);
-    return asset.thumbnailDataWithSize(
+    final spec = imagePolicy.forPurpose(purpose);
+    final size = _boundedSize(
+      asset.width,
+      asset.height,
+      maxDimension: spec.maxDimension,
+    );
+    final generationWatch = Stopwatch()..start();
+    final bytes = await asset.thumbnailDataWithSize(
       size,
       format: ThumbnailFormat.jpeg,
-      quality: 95,
+      quality: spec.jpegQuality,
+    );
+    generationWatch.stop();
+    if (bytes == null) return null;
+    return ProcessingImageLoad(
+      bytes: bytes,
+      width: size.width,
+      height: size.height,
+      assetLoadingDuration: assetWatch.elapsed,
+      generationDuration: generationWatch.elapsed,
     );
   }
 
@@ -202,7 +239,7 @@ final class PhotoManagerPhotoRepository implements PhotoRepository {
   static ThumbnailSize _boundedSize(
     int width,
     int height, {
-    int maxDimension = _processingMaxDimension,
+    required int maxDimension,
   }) {
     final largest = math.max(width, height);
     if (largest <= maxDimension) {

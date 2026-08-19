@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
 import 'package:screenshot_inbox/features/onboarding/onboarding_controller.dart';
+import 'package:screenshot_inbox/processing/image/processing_image_policy.dart';
 
 void main() {
   test(
@@ -42,7 +43,10 @@ final class _FakePhotoRepository implements PhotoRepository {
       assetIds.toSet();
 
   @override
-  Future<Uint8List?> getProcessingImage(String assetId) async => null;
+  Future<ProcessingImageLoad?> getProcessingImage(
+    String assetId, {
+    ProcessingImagePurpose purpose = ProcessingImagePurpose.ocr,
+  }) async => null;
 
   @override
   Future<List<PhotoAsset>> getScreenshots({
