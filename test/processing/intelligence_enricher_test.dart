@@ -161,6 +161,75 @@ void main() {
     expect(value.objects.single.structuredData.containsKey('venue'), isFalse);
   });
 
+  test('AI-first invocation does not require a deterministic object', () async {
+    final fake = FakeIntelligenceProvider(
+      result: _result([
+        const IntelligenceField(
+          name: 'title',
+          value: 'Bad Bunny',
+          evidence: ['B02'],
+        ),
+        const IntelligenceField(
+          name: 'date',
+          value: '2026-09-12',
+          evidence: ['B03'],
+        ),
+      ]),
+    );
+    final value =
+        await _enricher(
+          fake,
+          ids,
+          policy: IntelligenceUsagePolicy.actionableTypes,
+        ).enrich(
+          context: context,
+          deterministic: const ParseResult.empty(),
+          aiFirst: true,
+        );
+
+    expect(fake.requests, hasLength(1));
+    expect(fake.requests.single.deterministicCandidates, isEmpty);
+    expect(value.objects.single.type, ExtractedObjectType.event);
+    expect(value.objects.single.title, 'Bad Bunny');
+  });
+
+  test('validated AI success preserves user-edited fields', () async {
+    final old = deterministic.copyWith(
+      title: 'My confirmed title',
+      structuredData: {
+        ...deterministic.structuredData,
+        '_userConfirmedFields': const ['title', 'importantDate'],
+        'importantDate': '2026-10-01T19:00:00',
+        'startsAt': '2026-10-01T19:00:00',
+      },
+    );
+    final fake = FakeIntelligenceProvider(
+      result: _result([
+        const IntelligenceField(
+          name: 'title',
+          value: 'Bad Bunny',
+          evidence: ['B02'],
+        ),
+        const IntelligenceField(
+          name: 'date',
+          value: '2026-09-12',
+          evidence: ['B03'],
+        ),
+      ]),
+    );
+    final value = await _enricher(fake, ids).enrich(
+      context: context,
+      deterministic: ParseResult(objects: [deterministic]),
+      existingObjects: [old],
+    );
+
+    expect(value.objects.single.title, 'My confirmed title');
+    expect(
+      value.objects.single.structuredData['startsAt'],
+      '2026-10-01T19:00:00',
+    );
+  });
+
   test('timeout falls back and keeps user-confirmed fields', () async {
     final old = deterministic.copyWith(
       title: 'My confirmed title',
@@ -190,11 +259,13 @@ void main() {
 
 IntelligenceEnricher _enricher(
   IntelligenceProvider provider,
-  SequenceIdGenerator ids,
-) => IntelligenceEnricher(
+  SequenceIdGenerator ids, {
+  IntelligenceUsagePolicy policy =
+      IntelligenceUsagePolicy.alwaysForSupportedTypes,
+}) => IntelligenceEnricher(
   provider: provider,
   validator: const InterpretationValidator(),
-  policy: IntelligenceUsagePolicy.alwaysForSupportedTypes,
+  policy: policy,
   clock: FixedClock(DateTime.utc(2026, 8, 19, 12)),
   ids: ids,
   locale: () => 'es_ES',

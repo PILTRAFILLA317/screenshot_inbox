@@ -99,8 +99,6 @@ Future<void> scheduleBackgroundProcessing() async {
       frequency: const Duration(hours: 12),
       constraints: constraints,
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
-      backoffPolicy: BackoffPolicy.exponential,
-      backoffPolicyDelay: const Duration(minutes: 15),
     );
   } else if (Platform.isIOS) {
     await Workmanager().registerProcessingTask(

@@ -6,6 +6,7 @@ import 'package:screenshot_inbox/core/platform/clock.dart';
 import 'package:screenshot_inbox/core/utils/id_generator.dart';
 import 'package:screenshot_inbox/domain/extraction/extracted_object.dart';
 import 'package:screenshot_inbox/domain/extraction/extraction_repositories.dart';
+import 'package:screenshot_inbox/domain/intelligence/intelligence_provider.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
 import 'package:screenshot_inbox/domain/screenshots/photo_repository.dart';
 import 'package:screenshot_inbox/domain/screenshots/screenshot.dart';
@@ -28,6 +29,20 @@ import 'package:screenshot_inbox/processing/pipeline/processing_result.dart';
 import 'package:screenshot_inbox/processing/pipeline/processing_version.dart';
 import 'package:screenshot_inbox/processing/performance/processing_metrics.dart';
 import 'package:screenshot_inbox/processing/priority/ai_processing_priority.dart';
+
+final class DeepAnalysisRoutingDecision {
+  const DeepAnalysisRoutingDecision({
+    required this.shouldEnqueue,
+    required this.aiFirst,
+    required this.reason,
+    this.availability,
+  });
+
+  final bool shouldEnqueue;
+  final bool aiFirst;
+  final String reason;
+  final IntelligenceAvailability? availability;
+}
 
 final class ScreenshotProcessingPipeline {
   ScreenshotProcessingPipeline({
@@ -99,24 +114,135 @@ final class ScreenshotProcessingPipeline {
   String deepFingerprint(Screenshot screenshot) =>
       fingerprint.deepFor(fastFingerprint(screenshot));
 
-  Future<ProcessingResult> process(Screenshot screenshot) async {
-    final fast = await fastScan(screenshot);
-    if (fast.eligibility.needsAI) return deepAnalyze(fast);
-    return finalizeWithoutAI(fast);
+  Future<DeepAnalysisRoutingDecision> decideDeepAnalysis(
+    FastScanResult fast, {
+    required bool isNewOrRecent,
+  }) async {
+    if (!isNewOrRecent) {
+      return DeepAnalysisRoutingDecision(
+        shouldEnqueue: fast.eligibility.needsAI,
+        aiFirst: false,
+        reason: fast.eligibility.needsAI
+            ? 'historicalEligibilityPolicy'
+            : 'historicalEligibilityRejected',
+      );
+    }
+
+    final enricher = intelligence;
+    if (enricher == null) {
+      _logIntelligenceSkipped(
+        fast.screenshot.id,
+        reason: 'providerNotConfigured',
+      );
+      return const DeepAnalysisRoutingDecision(
+        shouldEnqueue: false,
+        aiFirst: true,
+        reason: 'providerNotConfigured',
+      );
+    }
+    if (!enricher.isEnabled) {
+      _logIntelligenceSkipped(
+        fast.screenshot.id,
+        reason: 'intelligenceDisabled',
+        availability: IntelligenceAvailabilityState.disabled.name,
+      );
+      return const DeepAnalysisRoutingDecision(
+        shouldEnqueue: false,
+        aiFirst: true,
+        reason: 'intelligenceDisabled',
+        availability: IntelligenceAvailability(
+          state: IntelligenceAvailabilityState.disabled,
+          provider: 'disabled',
+        ),
+      );
+    }
+
+    IntelligenceAvailability availability;
+    try {
+      availability = await enricher.availability();
+    } catch (error) {
+      availability = IntelligenceAvailability(
+        state: IntelligenceAvailabilityState.unknown,
+        provider: 'local-unknown',
+        reason: 'Availability check failed: ${error.runtimeType}.',
+      );
+    }
+    if (availability.isAvailable) {
+      return DeepAnalysisRoutingDecision(
+        shouldEnqueue: true,
+        aiFirst: true,
+        reason: 'newScreenshotAiFirst',
+        availability: availability,
+      );
+    }
+    _logIntelligenceSkipped(
+      fast.screenshot.id,
+      reason: 'providerUnavailable',
+      provider: availability.provider,
+      availability: availability.state.name,
+    );
+    return DeepAnalysisRoutingDecision(
+      shouldEnqueue: false,
+      aiFirst: true,
+      reason: 'providerUnavailable',
+      availability: availability,
+    );
   }
 
-  Future<ProcessingResult> finalizeWithoutAI(FastScanResult fast) async {
+  Future<ProcessingResult> process(Screenshot screenshot) async {
+    final fast = await fastScan(screenshot);
+    final routing = await decideDeepAnalysis(fast, isNewOrRecent: true);
+    if (routing.shouldEnqueue) {
+      return deepAnalyze(fast, routing: routing);
+    }
+    return finalizeWithoutAI(fast, routing: routing);
+  }
+
+  Future<ProcessingResult> finalizeWithoutAI(
+    FastScanResult fast, {
+    DeepAnalysisRoutingDecision? routing,
+  }) async {
+    final route =
+        routing ??
+        const DeepAnalysisRoutingDecision(
+          shouldEnqueue: false,
+          aiFirst: false,
+          reason: 'eligibilityPolicy',
+        );
+    final availability = route.availability;
+    final unavailable = availability != null && !availability.isAvailable;
     final result = await _finalize(
       fast: fast,
       objects: fast.deterministic.objects,
-      intelligenceDiagnostics: const {
+      intelligenceDiagnostics: {
         'policy': 'eligibility',
+        'provider': availability?.provider,
+        'availability': availability?.state.name,
+        'availabilityDetail': availability?.toJson(),
         'invoked': false,
-        'result': 'policySkipped',
-        'policyDecision': 'Fast Scan found sufficient deterministic evidence.',
+        'skipped': true,
+        'imageInput': false,
+        'ocrInput': false,
+        'result': unavailable ? 'providerUnavailable' : 'policySkipped',
+        'reason': route.reason,
+        'policyDecision': route.reason,
+        ..._routingDiagnostics(fast, route),
       },
       deepTimings: const ProcessingTimings(),
+      finalDeepState: DeepAnalysisState.skipped,
     );
+    if (_shouldDeferUnavailableProvider(availability)) {
+      final current = await store.findProcessingRecord(fast.screenshot.id);
+      if (current != null) {
+        await store.saveProcessingRecord(
+          current.copyWith(
+            deepState: DeepAnalysisState.deferred,
+            clearDeepFingerprint: true,
+            updatedAt: clock.now(),
+          ),
+        );
+      }
+    }
     metrics?.skipped();
     return result;
   }
@@ -266,8 +392,18 @@ final class ScreenshotProcessingPipeline {
     }
   }
 
-  Future<ProcessingResult> deepAnalyze(FastScanResult fast) async {
+  Future<ProcessingResult> deepAnalyze(
+    FastScanResult fast, {
+    DeepAnalysisRoutingDecision? routing,
+  }) async {
     final screenshot = fast.screenshot;
+    final route =
+        routing ??
+        const DeepAnalysisRoutingDecision(
+          shouldEnqueue: true,
+          aiFirst: false,
+          reason: 'historicalEligibilityPolicy',
+        );
     final record = await store.findProcessingRecord(screenshot.id);
     if (record == null) {
       throw StateError('Deep analysis requires a persisted Fast Scan.');
@@ -307,33 +443,25 @@ final class ScreenshotProcessingPipeline {
               context: context,
               deterministic: fast.deterministic,
               existingObjects: previous,
+              aiFirst: route.aiFirst,
+              knownAvailability: route.availability,
             );
       intelligenceWatch.stop();
-      final resultStatus = enrichment.diagnostics['result'];
-      if (resultStatus == 'timeout' || resultStatus == 'providerError') {
-        throw ScreenshotProcessingException(
-          'Local intelligence failed with $resultStatus.',
-        );
-      }
-      final availability = enrichment.diagnostics['availability'];
-      if (intelligence != null &&
-          resultStatus == 'providerUnavailable' &&
-          availability != 'unsupportedDevice' &&
-          availability != 'disabled') {
-        throw ScreenshotProcessingException(
-          'Local intelligence is temporarily unavailable: $availability.',
-        );
-      }
+      final intelligenceDiagnostics = <String, Object?>{
+        ...enrichment.diagnostics,
+        ..._routingDiagnostics(fast, route),
+      };
+      final resultStatus = intelligenceDiagnostics['result'] as String?;
       totalWatch.stop();
       final timings = ProcessingTimings(
         values: {
           'assetLoadingMs': image.assetLoadingDuration.inMilliseconds,
           'aiImageGenerationMs': image.generationDuration.inMilliseconds,
           'localAiMs':
-              (enrichment.diagnostics['durationMs'] as num?)?.round() ??
+              (intelligenceDiagnostics['durationMs'] as num?)?.round() ??
               intelligenceWatch.elapsedMilliseconds,
           'validationMs':
-              (enrichment.diagnostics['validationDurationMs'] as num?)
+              (intelligenceDiagnostics['validationDurationMs'] as num?)
                   ?.round() ??
               0,
           'deepScanTotalMs': totalWatch.elapsedMilliseconds,
@@ -345,20 +473,39 @@ final class ScreenshotProcessingPipeline {
           'screenshotId': screenshot.id,
           'classification': fast.context.classification?.type.value,
           'parser': fast.parserId,
-          ...enrichment.diagnostics,
+          ...intelligenceDiagnostics,
         },
       );
       final finalResult = await _finalize(
         fast: fast,
         context: context.copyWith(imageBytes: Uint8List(0)),
         objects: enrichment.objects,
-        intelligenceDiagnostics: enrichment.diagnostics,
+        intelligenceDiagnostics: intelligenceDiagnostics,
         deepTimings: timings,
-        finalDeepState: resultStatus == 'providerUnavailable'
-            ? DeepAnalysisState.skipped
-            : DeepAnalysisState.completed,
+        finalDeepState: resultStatus == 'success'
+            ? DeepAnalysisState.completed
+            : DeepAnalysisState.skipped,
       );
-      metrics?.deepCompleted(screenshot.id, timings);
+      if (_isRetryableIntelligenceFailure(resultStatus)) {
+        final current = await store.findProcessingRecord(screenshot.id);
+        if (current != null) {
+          final retry = record.retryCount + 1;
+          await store.saveProcessingRecord(
+            current.copyWith(
+              deepState: DeepAnalysisState.failed,
+              retryCount: retry,
+              nextRetryAt: clock.now().add(_retryDelay(retry)),
+              clearDeepFingerprint: true,
+              updatedAt: clock.now(),
+            ),
+          );
+        }
+        metrics?.failed();
+      } else if (resultStatus == 'success') {
+        metrics?.deepCompleted(screenshot.id, timings);
+      } else {
+        metrics?.skipped();
+      }
       return finalResult;
     } catch (error, stackTrace) {
       metrics?.failed();
@@ -385,6 +532,51 @@ final class ScreenshotProcessingPipeline {
     }
     metrics?.cached();
     return store.loadFastScan(screenshot, record);
+  }
+
+  static Map<String, Object?> _routingDiagnostics(
+    FastScanResult fast,
+    DeepAnalysisRoutingDecision routing,
+  ) => {
+    'fastScanCompleted': true,
+    'deepAnalysisQueued': routing.shouldEnqueue,
+    'queueReason': routing.reason,
+    'classificationHint': fast.context.classification?.type.value,
+    'parserHint': fast.parserId,
+  };
+
+  static bool _isRetryableIntelligenceFailure(String? result) =>
+      result == 'providerError' ||
+      result == 'timeout' ||
+      result == 'invalidStructuredOutput' ||
+      result == 'validationFailed';
+
+  static bool _shouldDeferUnavailableProvider(
+    IntelligenceAvailability? availability,
+  ) =>
+      availability?.state ==
+          IntelligenceAvailabilityState.temporarilyUnavailable ||
+      availability?.state == IntelligenceAvailabilityState.modelNotReady ||
+      availability?.state == IntelligenceAvailabilityState.unknown;
+
+  static Duration _retryDelay(int retry) =>
+      Duration(seconds: 2 << retry.clamp(0, 5).toInt());
+
+  static void _logIntelligenceSkipped(
+    String screenshotId, {
+    required String reason,
+    String? provider,
+    String? availability,
+  }) {
+    LocalDebugLog.event(
+      'processing.intelligence.skipped',
+      metadata: {
+        'screenshotId': screenshotId,
+        'reason': reason,
+        'provider': provider,
+        'availability': availability,
+      },
+    );
   }
 
   Future<ProcessingResult> _finalize({
@@ -475,9 +667,11 @@ final class ScreenshotProcessingPipeline {
     if (current != null) {
       await store.saveProcessingRecord(
         current.copyWith(
-          deepState: fast.eligibility.needsAI
-              ? finalDeepState ?? DeepAnalysisState.completed
-              : DeepAnalysisState.skipped,
+          deepState:
+              finalDeepState ??
+              (fast.eligibility.needsAI
+                  ? DeepAnalysisState.completed
+                  : DeepAnalysisState.skipped),
           deepFingerprint: deepFingerprint(fast.screenshot),
           deepTimings: deepTimings.merged({
             'databaseWriteMs': writeWatch.elapsedMilliseconds,
@@ -576,6 +770,13 @@ final class ScreenshotProcessingPipeline {
       'intelligencePolicy': {
         'policy': intelligence['policy'],
         'decision': intelligence['policyDecision'],
+      },
+      'deepAnalysisRouting': {
+        'fastScanCompleted': intelligence['fastScanCompleted'],
+        'queued': intelligence['deepAnalysisQueued'],
+        'reason': intelligence['queueReason'],
+        'classificationHint': intelligence['classificationHint'],
+        'parserHint': intelligence['parserHint'],
       },
       'providerExecution': {
         'provider': intelligence['provider'],

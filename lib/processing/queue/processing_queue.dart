@@ -63,10 +63,11 @@ final class ProcessingQueue<T> {
     retried: _retried,
   );
 
-  bool enqueue(T item) {
+  bool enqueue(T item, {void Function()? onAccepted}) {
     _assertOpen();
     final key = keyOf?.call(item);
     if (key != null && !_knownKeys.add(key)) return false;
+    onAccepted?.call();
     _insert(_QueuedItem(item: item, attempt: 1, sequence: _sequence++));
     if (_phase != ProcessingQueuePhase.paused) {
       _phase = ProcessingQueuePhase.running;

@@ -112,6 +112,7 @@ void main() {
 
   test('retries with a bound and does not duplicate keyed jobs', () async {
     var attempts = 0;
+    var accepted = 0;
     final queue = ProcessingQueue<int>(
       concurrency: 1,
       keyOf: (item) => '$item',
@@ -124,13 +125,14 @@ void main() {
     );
     addTearDown(queue.dispose);
 
-    expect(queue.enqueue(7), isTrue);
-    expect(queue.enqueue(7), isFalse);
+    expect(queue.enqueue(7, onAccepted: () => accepted++), isTrue);
+    expect(queue.enqueue(7, onAccepted: () => accepted++), isFalse);
     await queue.states.firstWhere(
       (state) => state.isIdle && state.completed == 1,
     );
 
     expect(attempts, 2);
+    expect(accepted, 1);
     expect(queue.snapshot.retried, 1);
   });
 }

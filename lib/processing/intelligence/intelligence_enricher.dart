@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:screenshot_inbox/core/debug/local_debug_log.dart';
 import 'package:screenshot_inbox/core/platform/clock.dart';
 import 'package:screenshot_inbox/core/utils/id_generator.dart';
 import 'package:screenshot_inbox/core/utils/json_types.dart';
@@ -45,14 +46,28 @@ final class IntelligenceEnricher {
   final String Function() _timezone;
   Future<void> _serialTail = Future.value();
 
+  bool get isEnabled => policy != IntelligenceUsagePolicy.disabled;
+
+  Future<IntelligenceAvailability> availability() => provider.availability();
+
   Future<IntelligenceEnrichmentResult> enrich({
     required ProcessingContext context,
     required ParseResult deterministic,
     List<ExtractedObject> existingObjects = const [],
+    bool aiFirst = false,
+    IntelligenceAvailability? knownAvailability,
   }) async {
     final base = deterministic.objects;
-    final policyDecision = _policyDecision(context, base);
+    final policyDecision = _policyDecision(context, base, aiFirst: aiFirst);
     if (!policyDecision.invoke) {
+      LocalDebugLog.event(
+        'processing.intelligence.skipped',
+        metadata: {
+          'screenshotId': context.screenshot.id,
+          'reason': 'policySkipped',
+          'availability': null,
+        },
+      );
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
@@ -71,8 +86,17 @@ final class IntelligenceEnricher {
       );
     }
 
-    final availability = await provider.availability();
+    final availability = knownAvailability ?? await provider.availability();
     if (!availability.isAvailable) {
+      LocalDebugLog.event(
+        'processing.intelligence.skipped',
+        metadata: {
+          'screenshotId': context.screenshot.id,
+          'provider': availability.provider,
+          'reason': 'providerUnavailable',
+          'availability': availability.state.name,
+        },
+      );
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
@@ -93,6 +117,16 @@ final class IntelligenceEnricher {
     }
 
     final request = _request(context, base);
+    LocalDebugLog.event(
+      'processing.intelligence.started',
+      metadata: {
+        'screenshotId': context.screenshot.id,
+        'provider': availability.provider,
+        'availability': availability.state.name,
+        'imageInput': request.imageBytes.isNotEmpty,
+        'ocrInput': request.blocks.isNotEmpty,
+      },
+    );
     final invocationWatch = Stopwatch()..start();
     try {
       final result = await _serialized(
@@ -102,12 +136,13 @@ final class IntelligenceEnricher {
       final validationWatch = Stopwatch()..start();
       final validations = <ValidatedInterpretation>[];
       for (var index = 0; index < result.interpretations.length; index++) {
-        final candidate = base.length > index ? base[index] : base.first;
         validations.add(
           validator.validate(
             interpretation: result.interpretations[index],
             request: request,
-            deterministicCandidate: _candidateJson(candidate),
+            deterministicCandidate: base.length > index
+                ? _candidateJson(base[index])
+                : const {},
           ),
         );
       }
@@ -120,14 +155,20 @@ final class IntelligenceEnricher {
                 validation.fields.isEmpty,
           );
       if (invalidResult) {
+        _logCompleted(
+          context: context,
+          provider: result.provider,
+          result: 'validationFailed',
+          durationMs: invocationWatch.elapsedMilliseconds,
+        );
         return IntelligenceEnrichmentResult(
           objects: _preserveUserFields(base, existingObjects),
           diagnostics: _diagnostics(
             availability: availability,
             result: result,
             invoked: true,
-            resultStatus: 'invalidResult',
-            reason: 'invalidResult',
+            resultStatus: 'validationFailed',
+            reason: 'validationFailed',
             durationMs: invocationWatch.elapsedMilliseconds,
             validations: validations,
             validationDurationMs: validationWatch.elapsedMilliseconds,
@@ -135,8 +176,19 @@ final class IntelligenceEnricher {
         );
       }
       final resolved = result.interpretations.isEmpty
-          ? _noActionObjects(base, result)
-          : _resolve(base, validations, result);
+          ? _noActionObjects(context, base, result)
+          : _resolve(
+              context: context,
+              deterministic: base,
+              validations: validations,
+              result: result,
+            );
+      _logCompleted(
+        context: context,
+        provider: result.provider,
+        result: 'success',
+        durationMs: invocationWatch.elapsedMilliseconds,
+      );
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(resolved, existingObjects),
         diagnostics: _diagnostics(
@@ -154,8 +206,14 @@ final class IntelligenceEnricher {
       final status = error is TimeoutException
           ? 'timeout'
           : error is FormatException
-          ? 'invalidResult'
+          ? 'invalidStructuredOutput'
           : 'providerError';
+      _logCompleted(
+        context: context,
+        provider: availability.provider,
+        result: status,
+        durationMs: invocationWatch.elapsedMilliseconds,
+      );
       return IntelligenceEnrichmentResult(
         objects: _preserveUserFields(base, existingObjects),
         diagnostics: {
@@ -166,8 +224,8 @@ final class IntelligenceEnricher {
           'availabilityDetail': availability.toJson(),
           'invoked': true,
           'skipped': true,
-          'imageInput': false,
-          'ocrInput': false,
+          'imageInput': request.imageBytes.isNotEmpty,
+          'ocrInput': request.blocks.isNotEmpty,
           'requestImageProvided': request.imageBytes.isNotEmpty,
           'requestOcrProvided': request.blocks.isNotEmpty,
           'durationMs': invocationWatch.elapsedMilliseconds,
@@ -181,10 +239,17 @@ final class IntelligenceEnricher {
 
   _PolicyDecision _policyDecision(
     ProcessingContext context,
-    List<ExtractedObject> objects,
-  ) {
+    List<ExtractedObject> objects, {
+    required bool aiFirst,
+  }) {
     if (policy == IntelligenceUsagePolicy.disabled) {
       return const _PolicyDecision(false, 'Intelligence is disabled.');
+    }
+    if (aiFirst) {
+      return const _PolicyDecision(
+        true,
+        'A new screenshot requires AI-first semantic interpretation.',
+      );
     }
     if (objects.isEmpty) {
       return const _PolicyDecision(false, 'No deterministic candidate.');
@@ -332,18 +397,19 @@ final class IntelligenceEnricher {
     return completer.future;
   }
 
-  List<ExtractedObject> _resolve(
-    List<ExtractedObject> deterministic,
-    List<ValidatedInterpretation> validations,
-    IntelligenceResult result,
-  ) {
+  List<ExtractedObject> _resolve({
+    required ProcessingContext context,
+    required List<ExtractedObject> deterministic,
+    required List<ValidatedInterpretation> validations,
+    required IntelligenceResult result,
+  }) {
     if (validations.isEmpty) return deterministic;
     final resolved = <ExtractedObject>[];
     for (var index = 0; index < validations.length; index++) {
       final validation = validations[index];
       final base = deterministic.length > index
           ? deterministic[index]
-          : _emptyObject(deterministic.first, validation.type);
+          : _emptyObject(context.screenshot.id, validation.type);
       resolved.add(_merge(base, validation, result));
     }
     if (deterministic.length > validations.length) {
@@ -353,35 +419,41 @@ final class IntelligenceEnricher {
   }
 
   List<ExtractedObject> _noActionObjects(
+    ProcessingContext context,
     List<ExtractedObject> base,
     IntelligenceResult result,
-  ) => [
-    for (final object in base)
-      object.copyWith(
-        type: ExtractedObjectType.reference,
-        subtype: 'reference.local-ai-no-action',
-        title: 'Reference',
-        clearSubtitle: true,
-        confidence: 0.75,
-        structuredData: {
-          for (final entry in object.structuredData.entries)
-            if (entry.key == '_parserId' ||
-                entry.key == 'classificationReasons' ||
-                entry.key == 'entityIds')
-              entry.key: entry.value,
-          '_fieldMetadata': const <String, Object?>{},
-          '_suppressActions': true,
-          '_intelligence': {
-            'provider': result.provider,
-            'providerVersion': ?result.providerVersion,
-            'interpretationVersion': ProcessingVersion.intelligence,
-            'timestamp': clock.now().toIso8601String(),
-            'decision': 'noActionableObject',
+  ) {
+    final candidates = base.isEmpty
+        ? [_emptyObject(context.screenshot.id, 'reference')]
+        : base;
+    return [
+      for (final object in candidates)
+        object.copyWith(
+          type: ExtractedObjectType.reference,
+          subtype: 'reference.local-ai-no-action',
+          title: 'Reference',
+          clearSubtitle: true,
+          confidence: 0.75,
+          structuredData: {
+            for (final entry in object.structuredData.entries)
+              if (entry.key == '_parserId' ||
+                  entry.key == 'classificationReasons' ||
+                  entry.key == 'entityIds')
+                entry.key: entry.value,
+            '_fieldMetadata': const <String, Object?>{},
+            '_suppressActions': true,
+            '_intelligence': {
+              'provider': result.provider,
+              'providerVersion': ?result.providerVersion,
+              'interpretationVersion': ProcessingVersion.intelligence,
+              'timestamp': clock.now().toIso8601String(),
+              'decision': 'noActionableObject',
+            },
           },
-        },
-        updatedAt: clock.now(),
-      ),
-  ];
+          updatedAt: clock.now(),
+        ),
+    ];
+  }
 
   ExtractedObject _merge(
     ExtractedObject base,
@@ -496,10 +568,10 @@ final class IntelligenceEnricher {
     ];
   }
 
-  ExtractedObject _emptyObject(ExtractedObject base, String type) =>
+  ExtractedObject _emptyObject(String screenshotId, String type) =>
       ExtractedObject(
         id: ids.next(),
-        screenshotId: base.screenshotId,
+        screenshotId: screenshotId,
         type: ExtractedObjectType(type),
         subtype: '$type.local-ai',
         title: type,
@@ -510,6 +582,23 @@ final class IntelligenceEnricher {
         createdAt: clock.now(),
         updatedAt: clock.now(),
       );
+
+  static void _logCompleted({
+    required ProcessingContext context,
+    required String provider,
+    required String result,
+    required int durationMs,
+  }) {
+    LocalDebugLog.event(
+      'processing.intelligence.completed',
+      metadata: {
+        'screenshotId': context.screenshot.id,
+        'provider': provider,
+        'result': result,
+        'durationMs': durationMs,
+      },
+    );
+  }
 
   static JsonMap _entityJson(ExtractedEntity entity) => {
     'id': entity.id,

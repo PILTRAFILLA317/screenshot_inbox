@@ -15,9 +15,13 @@ final class FakeIntelligenceProvider implements IntelligenceProvider {
   IntelligenceResult? result;
   Object? error;
   final List<IntelligenceRequest> requests = [];
+  var availabilityChecks = 0;
 
   @override
-  Future<IntelligenceAvailability> availability() async => state;
+  Future<IntelligenceAvailability> availability() async {
+    availabilityChecks++;
+    return state;
+  }
 
   @override
   Future<IntelligenceResult> interpret(IntelligenceRequest request) async {

@@ -92,7 +92,7 @@ final class ProcessingMetricsCollector {
   void deepCompleted(String screenshotId, ProcessingTimings timings) {
     _deep++;
     _ai.add(timings['localAiMs']);
-    _log('processing.deep_scan.completed', screenshotId, timings);
+    _log('processing.deep_analysis.completed', screenshotId, timings);
   }
 
   static void _log(

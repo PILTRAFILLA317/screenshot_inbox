@@ -81,6 +81,7 @@ final class ProcessingRecord {
     ProcessingTimings? deepTimings,
     int? retryCount,
     DateTime? nextRetryAt,
+    bool clearDeepFingerprint = false,
     bool clearNextRetryAt = false,
   }) => ProcessingRecord(
     screenshotId: screenshotId,
@@ -89,7 +90,9 @@ final class ProcessingRecord {
     deepState: deepState ?? this.deepState,
     updatedAt: updatedAt ?? this.updatedAt,
     fastFingerprint: fastFingerprint ?? this.fastFingerprint,
-    deepFingerprint: deepFingerprint ?? this.deepFingerprint,
+    deepFingerprint: clearDeepFingerprint
+        ? null
+        : deepFingerprint ?? this.deepFingerprint,
     fastPayload: fastPayload ?? this.fastPayload,
     aiPriority: aiPriority ?? this.aiPriority,
     aiEligibilityReasons: aiEligibilityReasons ?? this.aiEligibilityReasons,

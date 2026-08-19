@@ -97,6 +97,7 @@ final class DebugInspectorPage extends ConsumerWidget {
     'deterministicEntities',
     'classification',
     'deterministicParser',
+    'deepAnalysisRouting',
     'intelligencePolicy',
     'providerExecution',
     'localIntelligence',

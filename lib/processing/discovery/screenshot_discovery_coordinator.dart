@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:screenshot_inbox/core/debug/local_debug_log.dart';
 import 'package:screenshot_inbox/core/platform/clock.dart';
 import 'package:screenshot_inbox/core/utils/id_generator.dart';
 import 'package:screenshot_inbox/domain/lifecycle/lifecycle.dart';
@@ -160,6 +161,7 @@ final class ScreenshotDiscoveryCoordinator {
   var _aiSkipped = 0;
   var _cached = 0;
   var _deferred = 0;
+  final Set<String> _deepReservations = {};
 
   Stream<DiscoveryState> get states => _states.stream;
   DiscoveryState get state => _state;
@@ -279,15 +281,19 @@ final class ScreenshotDiscoveryCoordinator {
       if (fast != null) {
         _cached++;
         metrics.cached();
-        if (fast.eligibility.needsAI) {
+        final routing = await pipeline.decideDeepAnalysis(
+          fast,
+          isNewOrRecent: scheduler.isRecent(screenshot.createdAt, clock.now()),
+        );
+        if (routing.shouldEnqueue) {
           if (_canAttemptDeep(record)) {
-            await _enqueueDeep(fast);
+            await _enqueueDeep(fast, routing);
           } else {
             _deferred++;
           }
         } else if (screenshot.processingStatus !=
             ScreenshotProcessingStatus.processed) {
-          await pipeline.finalizeWithoutAI(fast);
+          await pipeline.finalizeWithoutAI(fast, routing: routing);
           _aiSkipped++;
         }
         return;
@@ -327,10 +333,9 @@ final class ScreenshotDiscoveryCoordinator {
   }
 
   Future<void> _processFast(Screenshot screenshot) async {
+    final isNewOrRecent = scheduler.isRecent(screenshot.createdAt, clock.now());
     final decision = await scheduler.decide(
-      recent:
-          _includeHistorical ||
-          scheduler.isRecent(screenshot.createdAt, clock.now()),
+      recent: _includeHistorical || isNewOrRecent,
       priority: 0,
     );
     _fastQueue.setConcurrency(decision.fastConcurrency);
@@ -339,38 +344,85 @@ final class ScreenshotDiscoveryCoordinator {
       return;
     }
     final fast = await pipeline.fastScan(screenshot);
-    if (fast.eligibility.needsAI) {
-      await _enqueueDeep(fast);
+    final routing = await pipeline.decideDeepAnalysis(
+      fast,
+      isNewOrRecent: isNewOrRecent,
+    );
+    if (routing.shouldEnqueue) {
+      await _enqueueDeep(fast, routing);
     } else {
-      await pipeline.finalizeWithoutAI(fast);
+      await pipeline.finalizeWithoutAI(fast, routing: routing);
       _aiSkipped++;
     }
   }
 
-  Future<void> _enqueueDeep(FastScanResult fast) async {
-    final decision = await scheduler.decide(
-      recent:
-          _includeHistorical ||
-          scheduler.isRecent(fast.screenshot.createdAt, clock.now()),
-      priority: fast.priority.score,
-    );
-    if (!decision.allowDeepAnalysis) {
-      final record = await store.findProcessingRecord(fast.screenshot.id);
+  Future<void> _enqueueDeep(
+    FastScanResult fast,
+    DeepAnalysisRoutingDecision routing,
+  ) async {
+    final screenshotId = fast.screenshot.id;
+    if (!_deepReservations.add(screenshotId)) return;
+    try {
+      final decision = await scheduler.decide(
+        recent:
+            _includeHistorical ||
+            scheduler.isRecent(fast.screenshot.createdAt, clock.now()),
+        priority: fast.priority.score,
+      );
+      if (!decision.allowDeepAnalysis) {
+        final record = await store.findProcessingRecord(screenshotId);
+        if (record != null) {
+          await store.saveProcessingRecord(
+            record.copyWith(
+              deepState: DeepAnalysisState.deferred,
+              clearDeepFingerprint: true,
+              updatedAt: clock.now(),
+            ),
+          );
+        }
+        _deferred++;
+        _deepReservations.remove(screenshotId);
+        return;
+      }
+      final record = await store.findProcessingRecord(screenshotId);
       if (record != null) {
         await store.saveProcessingRecord(
           record.copyWith(
-            deepState: DeepAnalysisState.deferred,
+            deepState: DeepAnalysisState.queued,
+            clearDeepFingerprint: true,
             updatedAt: clock.now(),
           ),
         );
       }
-      _deferred++;
-      return;
+      final enqueued = _deepQueue.enqueue(
+        _DeepJob(fast, routing),
+        onAccepted: () => LocalDebugLog.event(
+          'processing.deep_analysis.queued',
+          metadata: {
+            'screenshotId': screenshotId,
+            'reason': routing.reason,
+            'priority': fast.priority.score,
+            'classificationHint': fast.context.classification?.type.value,
+          },
+        ),
+      );
+      if (!enqueued) {
+        if (record != null) await store.saveProcessingRecord(record);
+        _deepReservations.remove(screenshotId);
+      }
+    } catch (_) {
+      _deepReservations.remove(screenshotId);
+      rethrow;
     }
-    _deepQueue.enqueue(_DeepJob(fast));
   }
 
-  Future<void> _processDeep(_DeepJob job) => pipeline.deepAnalyze(job.fast);
+  Future<void> _processDeep(_DeepJob job) async {
+    try {
+      await pipeline.deepAnalyze(job.fast, routing: job.routing);
+    } finally {
+      _deepReservations.remove(job.fast.screenshot.id);
+    }
+  }
 
   void pause() {
     if (_scanComplete &&
@@ -485,6 +537,7 @@ final class ScreenshotDiscoveryCoordinator {
     _scanning = false;
     _fastQueue.cancelPending();
     _deepQueue.cancelPending();
+    _deepReservations.clear();
     _state = const DiscoveryState.idle();
     _includeHistorical = false;
     _aiSkipped = 0;
@@ -546,6 +599,7 @@ final class ScreenshotDiscoveryCoordinator {
 }
 
 final class _DeepJob {
-  const _DeepJob(this.fast);
+  const _DeepJob(this.fast, this.routing);
   final FastScanResult fast;
+  final DeepAnalysisRoutingDecision routing;
 }
